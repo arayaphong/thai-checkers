@@ -1,0 +1,29 @@
+# Build output
+build/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE and Editor files
+.vscode/settings.json
+.vscode/launch.json.bak
+*.swp
+*.swo
+*~
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Temporary files
+*.tmp
+*.log
+
+# OS specific
+.DS_Store
+Thumbs.db
