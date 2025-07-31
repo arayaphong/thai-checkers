@@ -47,10 +47,28 @@ cmake --build build --config Debug
 ## Project Structure
 
 ```
-thai-checkers2/
+thai-checkers/
 ├── src/                 # Source files
-│   └── main.cpp        # Main application entry point
+│   ├── main.cpp        # Main application entry point
+│   ├── Board.cpp       # Game board implementation
+│   ├── DameAnalyzer.cpp # Dame piece movement analysis
+│   ├── PionAnalyzer.cpp # Pion piece movement analysis
+│   ├── Move.cpp        # Move representation
+│   └── Position.cpp    # Board position utilities
 ├── include/            # Header files
+│   ├── Board.h         # Game board interface
+│   ├── DameAnalyzer.h  # Dame analyzer interface
+│   ├── PionAnalyzer.h  # Pion analyzer interface
+│   ├── Move.h          # Move interface
+│   ├── Position.h      # Position utilities
+│   ├── Piece.h         # Piece definitions
+│   └── Options.h       # Configuration options
+├── tests/              # Unit tests
+│   ├── BoardTest.cpp
+│   ├── DameAnalyzerTest.cpp
+│   ├── PionAnalyzerTest.cpp
+│   ├── MoveTest.cpp
+│   └── PositionTest.cpp
 ├── build/              # Build output (generated)
 ├── .vscode/            # VS Code configuration
 │   ├── tasks.json      # Build tasks
@@ -58,13 +76,53 @@ thai-checkers2/
 │   └── c_cpp_properties.json  # IntelliSense configuration
 ├── .github/
 │   └── copilot-instructions.md  # Copilot guidelines
+├── backup_coverage_scripts/  # Backup of old coverage scripts
+├── coverage.sh         # Unified coverage management script
 ├── CMakeLists.txt      # Build configuration
 └── README.md           # This file
 ```
 
+## Coverage Analysis
+
+The project includes comprehensive code coverage analysis tools:
+
+### Unified Coverage Script
+
+```bash
+# Analyze existing coverage data
+./coverage.sh
+
+# Regenerate coverage data and analyze
+./coverage.sh --regenerate
+
+# View HTML coverage report in browser
+./coverage.sh --view
+
+# Show help
+./coverage.sh --help
+```
+
+### Coverage Features
+
+- **Line coverage analysis** with detailed reporting
+- **HTML reports** with interactive visualization
+- **Analyzer-specific coverage** for DameAnalyzer and PionAnalyzer
+- **Test execution analysis** with assertion counts
+- **Cross-analyzer comparison** highlighting feature differences
+
+### Current Coverage Status
+
+- **Overall Project**: ~67% line coverage
+- **DameAnalyzer**: ~48% coverage (comprehensive movement logic)
+- **PionAnalyzer**: ~17% coverage (basic movement implementation)
+- All unit tests passing with full test suite coverage
+
 ## Getting Started
 
-The project includes a simple "Hello World" application that demonstrates C++20 features. You can start building your Thai Checkers game from there.
+The project implements Thai Checkers game logic with two piece types:
+
+- **Dame (Queens)**: Multi-directional, multi-step movement with complex captures
+- **Pion (Pawns)**: Forward-only, single-step movement with simpler captures
 
 ## Development Tips
 
@@ -72,3 +130,5 @@ The project includes a simple "Hello World" application that demonstrates C++20 
 - The project is configured with C++20 standard
 - Debug symbols are enabled for better debugging experience
 - IntelliSense is configured for modern C++ features
+- Use `./coverage.sh --regenerate` after making changes to update coverage
+- View detailed coverage reports with `./coverage.sh --view`

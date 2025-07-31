@@ -56,9 +56,9 @@
             }
         },
         {
-            "label": "Run Application",
+            "label": "Run Thai Checkers Main",
             "type": "shell",
-            "command": "./build/ThaiCheckers2",
+            "command": "./build/thai_checkers_main",
             "group": "test",
             "dependsOn": "CMake Build",
             "presentation": {
