@@ -1,6 +1,7 @@
 # Build output
 build/
 build-test/
+build_optimized/
 *.o
 *.obj
 *.exe
@@ -33,3 +34,4 @@ coverage/
 # OS specific
 .DS_Store
 Thumbs.db
+

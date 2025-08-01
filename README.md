@@ -51,23 +51,22 @@ thai-checkers/
 ├── src/                 # Source files
 │   ├── main.cpp        # Main application entry point
 │   ├── Board.cpp       # Game board implementation
-│   ├── DameAnalyzer.cpp # Dame piece movement analysis
-│   ├── PionAnalyzer.cpp # Pion piece movement analysis
-│   ├── Move.cpp        # Move representation
-│   └── Position.cpp    # Board position utilities
+│   ├── Analyzer.cpp    # Unified piece movement analysis
+│   ├── Position.cpp    # Board position utilities
+│   └── Options.cpp     # Configuration options
 ├── include/            # Header files
 │   ├── Board.h         # Game board interface
-│   ├── DameAnalyzer.h  # Dame analyzer interface
-│   ├── PionAnalyzer.h  # Pion analyzer interface
-│   ├── Move.h          # Move interface
+│   ├── Analyzer.h      # Unified analyzer interface
+│   ├── AnalyzerTypes.h # Analyzer type definitions
 │   ├── Position.h      # Position utilities
 │   ├── Piece.h         # Piece definitions
-│   └── Options.h       # Configuration options
+│   ├── Options.h       # Configuration options
+│   └── main.h          # Main application interface
 ├── tests/              # Unit tests
 │   ├── BoardTest.cpp
-│   ├── DameAnalyzerTest.cpp
-│   ├── PionAnalyzerTest.cpp
-│   ├── MoveTest.cpp
+│   ├── AnalyzerTest.cpp
+│   ├── DameAnalyzerTest.cpp  # Dame-focused tests using unified Analyzer
+│   ├── PionAnalyzerTest.cpp  # Pion-focused tests using unified Analyzer
 │   └── PositionTest.cpp
 ├── build/              # Build output (generated)
 ├── .vscode/            # VS Code configuration
@@ -106,20 +105,19 @@ The project includes comprehensive code coverage analysis tools:
 
 - **Line coverage analysis** with detailed reporting
 - **HTML reports** with interactive visualization
-- **Analyzer-specific coverage** for DameAnalyzer and PionAnalyzer
+- **Unified analyzer coverage** for the integrated Analyzer class
 - **Test execution analysis** with assertion counts
-- **Cross-analyzer comparison** highlighting feature differences
+- **Comprehensive game logic validation**
 
 ### Current Coverage Status
 
-- **Overall Project**: ~67% line coverage
-- **DameAnalyzer**: ~48% coverage (comprehensive movement logic)
-- **PionAnalyzer**: ~17% coverage (basic movement implementation)
+- **Overall Project**: High line coverage across all components
+- **Unified Analyzer**: Comprehensive coverage for both piece types
 - All unit tests passing with full test suite coverage
 
 ## Getting Started
 
-The project implements Thai Checkers game logic with two piece types:
+The project implements Thai Checkers game logic with a unified analyzer handling two piece types:
 
 - **Dame (Queens)**: Multi-directional, multi-step movement with complex captures
 - **Pion (Pawns)**: Forward-only, single-step movement with simpler captures

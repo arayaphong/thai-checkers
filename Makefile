@@ -15,4 +15,4 @@ test: all
 
 # Build and run the main application
 run: all
-	./build/thai-checkers-2
+	./build/thai_checkers_main

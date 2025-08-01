@@ -37,9 +37,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 add_library(thai_checkers_lib STATIC
     src/Board.cpp
     src/Position.cpp
-    src/Move.cpp
-    src/DameAnalyzer.cpp
-    src/PionAnalyzer.cpp
+    src/Analyzer.cpp
     src/Options.cpp
     # Add other source files here
 )

@@ -4,21 +4,34 @@
 #include <set>
 #include <variant>
 #include <stdexcept>
-#include <concepts>
 #include <ranges>
 #include <iterator>
+#include <algorithm>
+#include <concepts>
 #include <type_traits>
 
 #include "Position.h"
 
-// Type aliases for better readability
 using Positions = std::vector<Position>;
 using CaptureSequence = std::vector<Position>;
 using CaptureSequences = std::set<CaptureSequence>;
 
-// C++20 concepts for type safety
+// C++20 concepts for type safety and better error messages
 template<typename T>
-concept IndexType = std::integral<T> && std::is_convertible_v<T, std::size_t>;
+concept PositionContainer = requires(T t) {
+    typename T::value_type;
+    requires std::same_as<typename T::value_type, Position>;
+    { t.size() } -> std::convertible_to<std::size_t>;
+    { t.empty() } -> std::convertible_to<bool>;
+};
+
+template<typename T>
+concept CaptureContainer = requires(T t) {
+    typename T::value_type;
+    requires std::same_as<typename T::value_type, CaptureSequence>;
+    { t.size() } -> std::convertible_to<std::size_t>;
+    { t.empty() } -> std::convertible_to<bool>;
+};
 
 /**
  * @brief A wrapper class that can hold either regular move positions or capture sequences.
@@ -31,18 +44,43 @@ class Options {
 private:
     std::variant<Positions, CaptureSequences> move_data;
 
+    /**
+     * @brief Gets a specific capture sequence by index with bounds checking.
+     * @param index Index of the capture sequence to retrieve.
+     * @return Capture sequence at the given index.
+     * @throws std::out_of_range if index is invalid.
+     * @throws std::invalid_argument if no capture sequences are available.
+     */
+    [[nodiscard]] const CaptureSequence& get_capture_sequence(const std::size_t index) const {
+        if (const auto* const sequences = std::get_if<CaptureSequences>(&move_data)) [[likely]] {
+            if (index >= sequences->size()) [[unlikely]] {
+                throw std::out_of_range("Index out of range for capture sequences");
+            }
+            const auto it = std::ranges::next(sequences->begin(), static_cast<std::ptrdiff_t>(index));
+            return *it;
+        }
+        
+        throw std::invalid_argument("No capture sequences available");
+    }
+
 public:
     /**
-     * @brief Constructs Options with regular positions.
-     * @param pos Vector of positions for regular moves.
+     * @brief Constructs Options with regular positions using C++20 concepts.
+     * @param pos Container of positions for regular moves.
      */
-    explicit Options(Positions pos) : move_data(std::move(pos)) {}
+    explicit Options(const PositionContainer auto& pos) 
+        requires std::same_as<std::decay_t<decltype(pos)>, Positions>
+        : move_data(pos) {}
 
     /**
-     * @brief Constructs Options with capture sequences.
-     * @param seq Set of capture sequences.
+     * @brief Constructs Options with capture sequences using C++20 concepts.
+     * @param seq Container of capture sequences.
      */
-    explicit Options(CaptureSequences seq) : move_data(std::move(seq)) {}
+    explicit Options(const CaptureContainer auto& seq) 
+        requires std::same_as<std::decay_t<decltype(seq)>, CaptureSequences>
+        : move_data(seq) {}
+
+    // Move constructor removed - not needed for facade pattern
 
     /**
      * @brief Checks if there are any captured pieces in the move data.
@@ -53,143 +91,66 @@ public:
     }
 
     /**
-     * @brief Checks if this contains regular positions.
-     * @return True if contains positions, false otherwise.
-     */
-    [[nodiscard]] constexpr bool has_positions() const noexcept {
-        return std::holds_alternative<Positions>(move_data);
-    }
-
-    /**
-     * @brief Gets the regular positions, returns empty vector if none available.
-     * @return Vector of positions.
-     */
-    [[nodiscard]] const Positions& get_positions() const {
-        if (const auto* pos = std::get_if<Positions>(&move_data)) {
-            return *pos;
-        }
-        static const Positions empty{};
-        return empty;
-    }
-
-    /**
-     * @brief Gets the capture sequences, returns empty set if none available.
-     * @return Set of capture sequences.
-     */
-    [[nodiscard]] const CaptureSequences& get_capture_sequences() const {
-        if (const auto* seqs = std::get_if<CaptureSequences>(&move_data)) {
-            return *seqs;
-        }
-        static const CaptureSequences empty{};
-        return empty;
-    }
-
-    /**
-     * @brief Gets the number of available moves/sequences.
+     * @brief Gets the number of available moves/sequences using C++20 std::visit.
      * @return Size of the underlying container.
      */
-    [[nodiscard]] std::size_t size() const noexcept {
-        return std::visit([](const auto& container) { return container.size(); }, move_data);
+    [[nodiscard]] constexpr std::size_t size() const noexcept {
+        return std::visit([]<typename T>(const T& container) constexpr -> std::size_t { 
+            return container.size(); 
+        }, move_data);
     }
 
     /**
-     * @brief Checks if there are no moves available.
+     * @brief Checks if there are no moves available using C++20 abbreviated function template.
      * @return True if empty, false otherwise.
      */
     [[nodiscard]] constexpr bool empty() const noexcept {
-        return std::visit([](const auto& container) { return container.empty(); }, move_data);
+        return std::visit([]<typename T>(const T& container) constexpr { 
+            return container.empty(); 
+        }, move_data);
     }
 
     /**
-     * @brief Gets a specific position by index with bounds checking.
-     * @tparam IndexT Index type (must be integral)
+     * @brief Gets a specific position by index with bounds checking using C++20 features.
      * @param index Index of the position to retrieve.
      * @return Position at the given index.
      * @throws std::out_of_range if index is invalid.
      * @throws std::invalid_argument if no positions are available.
      */
-    template<IndexType IndexT = std::size_t>
-    [[nodiscard]] Position get_position(IndexT index) const {
-        const auto idx = static_cast<std::size_t>(index);
-        
-        if (const auto* positions = std::get_if<Positions>(&move_data)) {
-            if (idx >= positions->size()) {
-                throw std::out_of_range("Index out of range for positions");
+    [[nodiscard]] Position get_position(const std::size_t index) const {
+        return std::visit([index]<typename T>(const T& container) -> Position {
+            if (index >= container.size()) [[unlikely]] {
+                throw std::out_of_range("Index out of range");
             }
-            return (*positions)[idx];
-        } 
-        
-        if (const auto* sequences = std::get_if<CaptureSequences>(&move_data)) {
-            if (idx >= sequences->size()) {
-                throw std::out_of_range("Index out of range for capture sequences");
+            if constexpr (std::same_as<T, Positions>) {
+                return container[index];
+            } else {
+                const auto it = std::ranges::next(container.begin(), static_cast<std::ptrdiff_t>(index));
+                return it->back(); // Get the last position in the capture sequence
             }
-            auto it = std::ranges::next(sequences->begin(), idx);
-            return it->back(); // Get the last position in the capture sequence
-        }
-        
-        throw std::invalid_argument("No position available");
+        }, move_data);
     }
 
     /**
-     * @brief Gets a specific capture sequence by index with bounds checking.
-     * @tparam IndexT Index type (must be integral)
-     * @param index Index of the capture sequence to retrieve.
-     * @return Capture sequence at the given index.
-     * @throws std::out_of_range if index is invalid.
-     * @throws std::invalid_argument if no capture sequences are available.
-     */
-    template<IndexType IndexT = std::size_t>
-    [[nodiscard]] const CaptureSequence& get_capture_sequence(IndexT index) const {
-        const auto idx = static_cast<std::size_t>(index);
-        
-        if (const auto* sequences = std::get_if<CaptureSequences>(&move_data)) {
-            if (idx >= sequences->size()) {
-                throw std::out_of_range("Index out of range for capture sequences");
-            }
-            auto it = std::ranges::next(sequences->begin(), idx);
-            return *it;
-        }
-        
-        throw std::invalid_argument("No capture sequences available");
-    }
-
-    /**
-     * @brief Gets the positions of captured pieces for a specific capture sequence.
-     * @tparam IndexT Index type (must be integral)
+     * @brief Gets the positions of captured pieces for a specific capture sequence using C++20 ranges.
      * @param index Index of the capture sequence.
      * @return Vector of positions representing captured pieces.
      * @throws std::out_of_range if index is invalid.
      * @throws std::invalid_argument if no capture sequences are available.
      */
-    template<IndexType IndexT = std::size_t>
-    [[nodiscard]] Positions get_capture_pieces(IndexT index) const {
+    [[nodiscard]] Positions get_capture_pieces(const std::size_t index) const {
         const auto& sequence = get_capture_sequence(index);
         
+        // Modern C++20 ranges approach with views and algorithms
+        auto even_indices = std::views::iota(std::size_t{0}, sequence.size()) 
+                          | std::views::filter([](const auto i) { return i % 2 == 0; });
+        
         Positions captured_positions;
-        // In CaptureSequence: [start, captured1, landing1, captured2, landing2, ..., end]
-        // Captured pieces are at odd indices (1, 3, ...), landing positions at even indices (2, 4, ...)
-        // We collect all captured pieces by iterating odd indices, skipping the first and last positions.
+        captured_positions.reserve(std::ranges::distance(even_indices));
         
-        // Use C++20 ranges for more expressive code
-        auto captured_indices = std::views::iota(std::size_t{1}, sequence.size() - 1) 
-                              | std::views::filter([](std::size_t i) { return i % 2 == 1; });
-        
-        for (const auto i : captured_indices) {
-            captured_positions.push_back(sequence[i]);
-        }
+        std::ranges::transform(even_indices, std::back_inserter(captured_positions),
+                              [&sequence](const auto i) { return sequence[i]; });
         
         return captured_positions;
-    }
-
-    /**
-     * @brief Visit the underlying move data with a callable.
-     * @tparam Visitor Callable type
-     * @param visitor Function to call with the underlying data
-     * @return Result of the visitor function
-     */
-    template<typename Visitor>
-    [[nodiscard]] constexpr auto visit(Visitor&& visitor) const 
-        -> decltype(std::visit(std::forward<Visitor>(visitor), move_data)) {
-        return std::visit(std::forward<Visitor>(visitor), move_data);
     }
 };

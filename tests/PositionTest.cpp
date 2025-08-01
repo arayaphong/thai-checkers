@@ -83,13 +83,13 @@ TEST_CASE("Position validation for string notation") {
 TEST_CASE("Position construction from coordinates") {
     SECTION("Valid construction") {
         Position pos1(1, 0);  // B1
-        REQUIRE(pos1.x == 1);
-        REQUIRE(pos1.y == 0);
+        REQUIRE(pos1.x() == 1);
+        REQUIRE(pos1.y() == 0);
         REQUIRE(pos1.is_valid());
 
         Position pos2(7, 6);  // H7
-        REQUIRE(pos2.x == 7);
-        REQUIRE(pos2.y == 6);
+        REQUIRE(pos2.x() == 7);
+        REQUIRE(pos2.y() == 6);
         REQUIRE(pos2.is_valid());
     }
 
@@ -110,16 +110,16 @@ TEST_CASE("Position construction from coordinates") {
 TEST_CASE("Position construction from string") {
     SECTION("Valid construction") {
         Position pos1("B1");
-        REQUIRE(pos1.x == 1);
-        REQUIRE(pos1.y == 0);
+        REQUIRE(pos1.x() == 1);
+        REQUIRE(pos1.y() == 0);
 
         Position pos2("A2");
-        REQUIRE(pos2.x == 0);
-        REQUIRE(pos2.y == 1);
+        REQUIRE(pos2.x() == 0);
+        REQUIRE(pos2.y() == 1);
 
         Position pos3("H7");
-        REQUIRE(pos3.x == 7);
-        REQUIRE(pos3.y == 6);
+        REQUIRE(pos3.x() == 7);
+        REQUIRE(pos3.y() == 6);
     }
 
     SECTION("Invalid construction - white squares") {
@@ -260,23 +260,23 @@ TEST_CASE("Position from_index method") {
     SECTION("Valid index conversions") {
         // Test known index-to-position mappings
         Position pos0 = Position::from_index(0);   // Should be B1 (1,0)
-        REQUIRE(pos0.x == 1);
-        REQUIRE(pos0.y == 0);
+        REQUIRE(pos0.x() == 1);
+        REQUIRE(pos0.y() == 0);
         REQUIRE(pos0.to_string() == "B1");
 
         Position pos1 = Position::from_index(1);   // Should be D1 (3,0)
-        REQUIRE(pos1.x == 3);
-        REQUIRE(pos1.y == 0);
+        REQUIRE(pos1.x() == 3);
+        REQUIRE(pos1.y() == 0);
         REQUIRE(pos1.to_string() == "D1");
 
         Position pos4 = Position::from_index(4);   // Should be A2 (0,1)
-        REQUIRE(pos4.x == 0);
-        REQUIRE(pos4.y == 1);
+        REQUIRE(pos4.x() == 0);
+        REQUIRE(pos4.y() == 1);
         REQUIRE(pos4.to_string() == "A2");
 
         Position pos31 = Position::from_index(31); // Should be G8 (6,7)
-        REQUIRE(pos31.x == 6);
-        REQUIRE(pos31.y == 7);
+        REQUIRE(pos31.x() == 6);
+        REQUIRE(pos31.y() == 7);
         REQUIRE(pos31.to_string() == "G8");
     }
 
@@ -287,7 +287,7 @@ TEST_CASE("Position from_index method") {
             Position pos = Position::from_index(i);
             REQUIRE(pos.is_valid());
             // Verify it's on a black square
-            REQUIRE((pos.x + pos.y) % 2 == 1);
+            REQUIRE((pos.x() + pos.y()) % 2 == 1);
         }
     }
 
@@ -312,26 +312,26 @@ TEST_CASE("Position from_hash method") {
     SECTION("Valid hash conversions") {
         // Test known hash-to-position mappings based on hash() = (x/2) + ((board_size/2) * y)
         Position pos0 = Position::from_hash(0);    // hash=0: should be B1 (1,0)
-        REQUIRE(pos0.x == 1);
-        REQUIRE(pos0.y == 0);
+        REQUIRE(pos0.x() == 1);
+        REQUIRE(pos0.y() == 0);
         REQUIRE(pos0.to_string() == "B1");
         REQUIRE(pos0.hash() == 0);
 
         Position pos1 = Position::from_hash(1);    // hash=1: should be D1 (3,0)
-        REQUIRE(pos1.x == 3);
-        REQUIRE(pos1.y == 0);
+        REQUIRE(pos1.x() == 3);
+        REQUIRE(pos1.y() == 0);
         REQUIRE(pos1.to_string() == "D1");
         REQUIRE(pos1.hash() == 1);
 
         Position pos4 = Position::from_hash(4);    // hash=4: should be A2 (0,1)
-        REQUIRE(pos4.x == 0);
-        REQUIRE(pos4.y == 1);
+        REQUIRE(pos4.x() == 0);
+        REQUIRE(pos4.y() == 1);
         REQUIRE(pos4.to_string() == "A2");
         REQUIRE(pos4.hash() == 4);
 
         Position pos27 = Position::from_hash(27);  // hash=27: should be H7 (7,6)
-        REQUIRE(pos27.x == 7);
-        REQUIRE(pos27.y == 6);
+        REQUIRE(pos27.x() == 7);
+        REQUIRE(pos27.y() == 6);
         REQUIRE(pos27.to_string() == "H7");
         REQUIRE(pos27.hash() == 27);
     }
@@ -343,7 +343,7 @@ TEST_CASE("Position from_hash method") {
             Position pos = Position::from_hash(hash);
             REQUIRE(pos.is_valid());
             // Verify it's on a black square
-            REQUIRE((pos.x + pos.y) % 2 == 1);
+            REQUIRE((pos.x() + pos.y()) % 2 == 1);
             // Verify round-trip: hash -> position -> hash
             REQUIRE(pos.hash() == hash);
         }
@@ -370,8 +370,8 @@ TEST_CASE("Position from_hash method") {
             Position restored_pos = Position::from_hash(hash_value);
             
             REQUIRE(original_pos == restored_pos);
-            REQUIRE(original_pos.x == restored_pos.x);
-            REQUIRE(original_pos.y == restored_pos.y);
+            REQUIRE(original_pos.x() == restored_pos.x());
+            REQUIRE(original_pos.y() == restored_pos.y());
             REQUIRE(original_pos.to_string() == restored_pos.to_string());
         }
     }

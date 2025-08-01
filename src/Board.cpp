@@ -1,138 +1,160 @@
 #include "Board.h"
 #include <stdexcept>
 #include <utility>
-#include <algorithm> // for std::count_if
+#include <algorithm>
+#include <ranges>
 #include <bitset>
-
-Board::Board() {}
-
-Board::~Board() = default;
-
-Board::Board(const Board &other) : pieces(other.pieces) {}
-
-Board& Board::operator=(const Board& other) {
-    if (this != &other) {
-        pieces = other.pieces;
-    }
-    return *this;
-}
-Board::Board(Board&& other) noexcept = default;
-Board::Board(const Pieces &pieces) : pieces(pieces) {}
-
-Board &Board::operator=(Board &&other) noexcept = default;
+#include <format>
 
 std::size_t Board::hash() const noexcept {
-    // A 64-bit hash value composed of:
-    // - 32 bits for piece occupancy on the 32 valid squares.
-    // - 16 bits for the color of each piece (up to 16 pieces).
-    // - 16 bits for the type (dame/king) of each piece (up to 16 pieces).
-    // This hashing scheme is order-dependent and assumes a maximum of 16 pieces
-    // will be encoded for color and type based on their position index.
-
+    // Modern C++20 compatible reversible hash for up to 16 pieces
+    // Uses bitset for efficient storage and reconstruction
     std::bitset<64> hash_bits;
     int piece_count = 0;
 
-    // Iterate through all 32 valid board squares to build the hash.
+    // Process all 32 possible board positions (8x8 checkerboard = 32 valid squares)
     for (int i = 0; i < 32; ++i) {
         const auto pos = Position::from_index(i);
-        if (const auto it = pieces.find(pos); it != pieces.end()) {
-            // Set occupancy bit (stored in the upper 32 bits of the hash).
+        if (const auto it = pieces_.find(pos); it != pieces_.end()) {
+            // Set occupancy bit (upper 32 bits)
             hash_bits[i + 32] = true;
 
-            // Encode piece color and type for the first 16 pieces found.
+            // Store piece info for first 16 pieces (C++20 structured binding)
             if (piece_count < 16) {
-                const auto& piece = it->second;
-                // Color bit (stored in bits 16-31)
-                hash_bits[piece_count + 16] = (piece.color == PieceColor::BLACK);
-                // Type bit (stored in bits 0-15)
-                hash_bits[piece_count] = (piece.type == PieceType::DAME);
-                piece_count++;
+                const auto& [position, piece_info] = *it;
+                // Color bit (bits 16-31)
+                hash_bits[piece_count + 16] = (piece_info.color == PieceColor::BLACK);
+                // Type bit (bits 0-15)  
+                hash_bits[piece_count] = (piece_info.type == PieceType::DAME);
+                ++piece_count;
             }
         }
     }
 
-    return static_cast<std::size_t>(hash_bits.to_ullong());
+    return hash_bits.to_ullong();
 }
 
 Board Board::from_hash(std::size_t hash_value) {
     Board board;
-    const std::bitset<64> hash_bits(hash_value);
+    const std::bitset<64> hash_bits{hash_value};
     int piece_count = 0;
 
-    // Reconstruct the pieces based on the occupancy bits.
+    // Modern C++20: Reconstruct pieces from hash bits
     for (int i = 0; i < 32; ++i) {
-        // Check occupancy bit from the upper 32 bits.
+        // Check occupancy bit (upper 32 bits)
         if (hash_bits[i + 32]) {
             const auto pos = Position::from_index(i);
-            // Color from bits 16-31
-            const auto color = hash_bits[piece_count + 16] ? PieceColor::BLACK : PieceColor::WHITE;
-            // Type from bits 0-15
-            const auto type = hash_bits[piece_count] ? PieceType::DAME : PieceType::PION;
             
-            board.pieces.emplace(pos, PieceInfo{color, type});
-            piece_count++;
+            // Decode piece info using designated initializers (C++20)
+            const auto color = hash_bits[piece_count + 16] ? 
+                PieceColor::BLACK : PieceColor::WHITE;
+            const auto type = hash_bits[piece_count] ? 
+                PieceType::DAME : PieceType::PION;
+            
+            board.pieces_.emplace(pos, PieceInfo{
+                .color = color,
+                .type = type
+            });
+            ++piece_count;
         }
     }
 
     return board;
 }
 
-bool Board::is_valid_position(const Position& pos) {
-    return Position::is_valid(pos.x, pos.y) && ((pos.x + pos.y) % 2 != 0);
+constexpr bool Board::is_valid_position(const Position& pos) noexcept {
+    return Position::is_valid(pos.x(), pos.y()) && ((pos.x() + pos.y()) % 2 != 0);
 }
 
-bool Board::is_occupied(const Position& pos) const {
-    return is_valid_position(pos) && pieces.contains(pos);
+bool Board::is_occupied(const Position& pos) const noexcept {
+    return is_valid_position(pos) && pieces_.contains(pos);
 }
 
 bool Board::is_black_piece(const Position& pos) const {
-    if (!is_valid_position(pos)) throw std::invalid_argument("Invalid position");
-    auto it = pieces.find(pos);
-    if (it == pieces.end()) throw std::invalid_argument("No piece at position");
-    return it->second.color == PieceColor::BLACK;
+    if (!is_valid_position(pos)) [[unlikely]] {
+        throw std::invalid_argument("Invalid position");
+    }
+    
+    if (const auto it = pieces_.find(pos); it != pieces_.end()) [[likely]] {
+        return it->second.color == PieceColor::BLACK;
+    }
+    
+    throw std::invalid_argument("No piece at position");
 }
 
 bool Board::is_dame_piece(const Position& pos) const {
-    if (!is_valid_position(pos)) throw std::invalid_argument("Invalid position");
-    auto it = pieces.find(pos);
-    if (it == pieces.end()) throw std::invalid_argument("No piece at position");
-    return it->second.type == PieceType::DAME;
+    if (!is_valid_position(pos)) [[unlikely]] {
+        throw std::invalid_argument("Invalid position");
+    }
+    
+    if (const auto it = pieces_.find(pos); it != pieces_.end()) [[likely]] {
+        return it->second.type == PieceType::DAME;
+    }
+    
+    throw std::invalid_argument("No piece at position");
 }
 
 void Board::promote_piece(const Position& pos) {
-    if (!is_valid_position(pos)) throw std::invalid_argument("Invalid position");
-    auto it = pieces.find(pos);
-    if (it == pieces.end()) throw std::invalid_argument("No piece at position");
-    if (it->second.type == PieceType::DAME) return; // Already dame
-    pieces[pos] = PieceInfo{it->second.color, PieceType::DAME};
+    if (!is_valid_position(pos)) [[unlikely]] {
+        throw std::invalid_argument("Invalid position");
+    }
+    
+    auto it = pieces_.find(pos);
+    if (it == pieces_.end()) [[unlikely]] {
+        throw std::invalid_argument("No piece at position");
+    }
+    
+    if (it->second.type == PieceType::DAME) [[unlikely]] {
+        return; // Already promoted
+    }
+    
+    // Use structured binding and designated initializer
+    pieces_[pos] = PieceInfo{.color = it->second.color, .type = PieceType::DAME};
 }
 
 void Board::move_piece(const Position& from, const Position& to) {
-    if (!is_valid_position(from) || !is_valid_position(to)) throw std::invalid_argument("Invalid position");
-    if (from == to) return; // No move needed
-    if (!is_occupied(from)) throw std::invalid_argument("No piece at from position");
-    if (is_occupied(to)) throw std::invalid_argument("To position already occupied");
+    if (!is_valid_position(from) || !is_valid_position(to)) [[unlikely]] {
+        throw std::invalid_argument("Invalid position");
+    }
+    
+    if (from == to) [[unlikely]] {
+        return; // No move needed
+    }
+    
+    if (!is_occupied(from)) [[unlikely]] {
+        throw std::invalid_argument("No piece at from position");
+    }
+    
+    if (is_occupied(to)) [[unlikely]] {
+        throw std::invalid_argument("To position already occupied");
+    }
 
-    pieces[to] = pieces[from];
-    pieces.erase(from);
+    // Extract and move the piece using modern C++20 features
+    if (auto node = pieces_.extract(from); !node.empty()) [[likely]] {
+        node.key() = to;
+        pieces_.insert(std::move(node));
+    }
 }
 
-void Board::remove_piece(const Position& pos) {
-    if (!is_valid_position(pos)) throw std::invalid_argument("Invalid position");
-    pieces.erase(pos);
+void Board::remove_piece(const Position& pos) noexcept {
+    if (is_valid_position(pos)) [[likely]] {
+        pieces_.erase(pos);
+    }
 }
 
-int Board::get_piece_count(PieceColor color) const {
-    return static_cast<int>(std::count_if(pieces.begin(), pieces.end(),
-        [color](const auto& pair) {
-            return pair.second.color == color;
-        }));
+int Board::get_piece_count(PieceColor color) const noexcept {
+    // Use modern C++20 ranges with projection
+    return static_cast<int>(std::ranges::count_if(
+        pieces_, 
+        [color](const PieceInfo& piece) { return piece.color == color; },
+        &Pieces::value_type::second
+    ));
 }
 
-int Board::get_piece_count() const {
-    return static_cast<int>(pieces.size());
+int Board::get_piece_count() const noexcept {
+    return static_cast<int>(pieces_.size());
 }
 
-void Board::reset() {
-    pieces.clear();
+void Board::reset() noexcept {
+    pieces_.clear();
 }
