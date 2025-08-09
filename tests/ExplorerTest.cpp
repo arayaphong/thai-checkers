@@ -3,9 +3,10 @@
 #include <algorithm>
 #include <format>
 #include <map>
+#include <iostream>
 
 #include "Board.h"
-#include "Analyzer.h"
+#include "Explorer.h"
 #include "Position.h"
 #include "Piece.h"
 
@@ -41,7 +42,7 @@ std::string board_to_string(const Board& board) {
     return result;
 }
 
-TEST_CASE("Analyzer - Basic movement tests", "[Analyzer]") {
+TEST_CASE("Explorer - Basic movement tests", "[Explorer]") {
     SECTION("White pion normal moves") {
         const Position focus{"C4"};
         const Pieces pieces = {
@@ -49,7 +50,7 @@ TEST_CASE("Analyzer - Basic movement tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(options.has_captured());
@@ -70,7 +71,7 @@ TEST_CASE("Analyzer - Basic movement tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(options.has_captured());
@@ -91,7 +92,7 @@ TEST_CASE("Analyzer - Basic movement tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(options.has_captured());
@@ -116,14 +117,14 @@ TEST_CASE("Analyzer - Basic movement tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE(options.has_captured());
     }
 }
 
-TEST_CASE("Analyzer - Pion capture tests", "[Analyzer]") {
+TEST_CASE("Explorer - Pion capture tests", "[Explorer]") {
     SECTION("Single capture - white pion captures black") {
         const Position focus{"C4"};
         const Pieces pieces = {
@@ -132,7 +133,7 @@ TEST_CASE("Analyzer - Pion capture tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -156,7 +157,7 @@ TEST_CASE("Analyzer - Pion capture tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -185,7 +186,7 @@ TEST_CASE("Analyzer - Pion capture tests", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Dame capture tests", "[Analyzer]") {
+TEST_CASE("Explorer - Dame capture tests", "[Explorer]") {
     SECTION("Dame long-range capture") {
         const Position focus{"B1"};  // B1 = (1,0) which is valid (odd sum)
         const Pieces pieces = {
@@ -194,7 +195,7 @@ TEST_CASE("Analyzer - Dame capture tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -220,7 +221,7 @@ TEST_CASE("Analyzer - Dame capture tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -229,7 +230,7 @@ TEST_CASE("Analyzer - Dame capture tests", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Error handling tests", "[Analyzer]") {
+TEST_CASE("Explorer - Error handling tests", "[Explorer]") {
     SECTION("Empty position throws exception") {
         const Position empty_pos{"E6"}; 
         const Pieces pieces = {
@@ -237,7 +238,7 @@ TEST_CASE("Analyzer - Error handling tests", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         REQUIRE_THROWS_AS(analyzer.find_valid_moves(empty_pos), std::invalid_argument);
     }
@@ -247,7 +248,7 @@ TEST_CASE("Analyzer - Error handling tests", "[Analyzer]") {
             {Position{"C4"}, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}}
         };
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         // Test with an empty position (no piece there)
         REQUIRE_THROWS_AS(analyzer.find_valid_moves(Position{"E4"}), std::invalid_argument);
@@ -263,7 +264,7 @@ TEST_CASE("Analyzer - Error handling tests", "[Analyzer]") {
         };
         
         Board mixed_board(mixed_pieces);
-        Analyzer analyzer(mixed_board);
+        Explorer analyzer(mixed_board);
         
         // Should work fine for the pion
         auto pion_options = analyzer.find_valid_moves(pion_focus);
@@ -275,7 +276,7 @@ TEST_CASE("Analyzer - Error handling tests", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Movement range comparison", "[Analyzer]") {
+TEST_CASE("Explorer - Movement range comparison", "[Explorer]") {
     SECTION("Dame vs Pion movement range") {
         const Position focus{"C4"};
         
@@ -283,14 +284,14 @@ TEST_CASE("Analyzer - Movement range comparison", "[Analyzer]") {
             {focus, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}}
         };
         Board pion_board(pion_pieces);
-        Analyzer pion_analyzer(pion_board);
+        Explorer pion_analyzer(pion_board);
         auto pion_options = pion_analyzer.find_valid_moves(focus);
         
         const Pieces dame_pieces = {
             {focus, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::DAME}}
         };
         Board dame_board(dame_pieces);
-        Analyzer dame_analyzer(dame_board);
+        Explorer dame_analyzer(dame_board);
         auto dame_options = dame_analyzer.find_valid_moves(focus);
         
         REQUIRE_FALSE(pion_options.has_captured());
@@ -316,7 +317,7 @@ TEST_CASE("Analyzer - Movement range comparison", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Advanced capture scenarios", "[Analyzer]") {
+TEST_CASE("Explorer - Advanced capture scenarios", "[Explorer]") {
     SECTION("Chain capture setup") {
         // Test scenario that could lead to chain captures
         const Position focus{"C4"};
@@ -327,7 +328,7 @@ TEST_CASE("Analyzer - Advanced capture scenarios", "[Analyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -351,7 +352,7 @@ TEST_CASE("Analyzer - Advanced capture scenarios", "[Analyzer]") {
 
 // ===== PION ANALYZER TESTS (from PionAnalyzerTest.cpp) =====
 
-TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
+TEST_CASE("Explorer - Pion Edge case tests", "[PionAnalyzer]") {
     SECTION("Board boundaries") {
         const Position edge_pos{"A2"}; 
         const Pieces edge_pieces = {
@@ -359,7 +360,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
         };
         
         Board edge_board(edge_pieces);
-        Analyzer edge_analyzer(edge_board);
+        Explorer edge_analyzer(edge_board);
         
         auto edge_options = edge_analyzer.find_valid_moves(edge_pos);
         REQUIRE_FALSE(edge_options.has_captured());
@@ -376,7 +377,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
         };
         
         Board corner_board(corner_pieces);
-        Analyzer corner_analyzer(corner_board);
+        Explorer corner_analyzer(corner_board);
         
         auto corner_options = corner_analyzer.find_valid_moves(corner_pos);
         REQUIRE_FALSE(corner_options.has_captured());
@@ -392,7 +393,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
             {white_pos, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}}
         };
         Board white_board(white_pieces);
-        Analyzer white_analyzer(white_board);
+        Explorer white_analyzer(white_board);
         
         auto white_options = white_analyzer.find_valid_moves(white_pos);
         REQUIRE_FALSE(white_options.has_captured());
@@ -411,7 +412,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
             {black_pos, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}}
         };
         Board black_board(black_pieces);
-        Analyzer black_analyzer(black_board);
+        Explorer black_analyzer(black_board);
         
         auto black_options = black_analyzer.find_valid_moves(black_pos);
         REQUIRE_FALSE(black_options.has_captured());
@@ -434,7 +435,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
         };
         
         Board edge_capture_board(edge_capture_pieces);
-        Analyzer edge_capture_analyzer(edge_capture_board);
+        Explorer edge_capture_analyzer(edge_capture_board);
         
         auto edge_capture_options = edge_capture_analyzer.find_valid_moves(edge_capture_pos);
         
@@ -443,7 +444,7 @@ TEST_CASE("Analyzer - Pion Edge case tests", "[PionAnalyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
+TEST_CASE("Explorer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
     SECTION("Capture blocked by friendly piece") {
         const Position focus{"C4"};
         const Pieces pieces = {
@@ -452,7 +453,7 @@ TEST_CASE("Analyzer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(options.has_captured());
@@ -467,7 +468,7 @@ TEST_CASE("Analyzer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(options.has_captured());
@@ -482,7 +483,7 @@ TEST_CASE("Analyzer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
         };
         
         Board edge_board(edge_pieces);
-        Analyzer edge_analyzer(edge_board);
+        Explorer edge_analyzer(edge_board);
         
         auto edge_options = edge_analyzer.find_valid_moves(edge_focus);
         
@@ -495,7 +496,7 @@ TEST_CASE("Analyzer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
 
 // ===== DAME ANALYZER TESTS (from DameAnalyzerTest.cpp) =====
 
-TEST_CASE("Analyzer - Options get_positions() with capture sequences", "[Analyzer][Options]") {
+TEST_CASE("Explorer - Options get_positions() with capture sequences", "[Explorer][Options]") {
     SECTION("get_positions() returns empty when Options contains capture sequences - Pion") {
         // Setup a scenario where a Pion can capture a piece (creating capture sequences)
         const Position focus{"C4"};
@@ -505,7 +506,7 @@ TEST_CASE("Analyzer - Options get_positions() with capture sequences", "[Analyze
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -531,7 +532,7 @@ TEST_CASE("Analyzer - Options get_positions() with capture sequences", "[Analyze
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         auto options = analyzer.find_valid_moves(focus);
         
@@ -563,7 +564,7 @@ TEST_CASE("DameCaptureAnalyzer - Complex multi-capture scenario", "[DameCaptureA
         INFO("Board configuration:\n" << board_to_string(board));
         INFO("Focus Position: " << focus.to_string());
 
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(focus);
         REQUIRE(moves.size() == 22);
         
@@ -586,6 +587,131 @@ TEST_CASE("DameCaptureAnalyzer - Complex multi-capture scenario", "[DameCaptureA
             INFO(std::format("  - {} sequences with {} captures each", 
                            count, length));
         }
+
+        // Print all sequences for debugging
+        INFO("Valid Capture Sequences:");
+        std::cout << "\nValid Capture Sequences found:\n";
+        for (std::size_t i = 0; i < moves.size(); ++i) {
+            const auto& position = moves.get_position(i);
+            const auto& captured_pieces = moves.get_capture_pieces(i);
+            std::string captures_str = "";
+            for (const auto& piece : captured_pieces) {
+                if (!captures_str.empty()) captures_str += " ";
+                captures_str += piece.to_string();
+            }
+            INFO(std::format("  - Target: {} Captures: {} ({})", 
+                           position.to_string(), captures_str, captured_pieces.size()));
+            std::cout << "  - Target: " << position.to_string() << " Captures: " 
+                     << captures_str << " (" << captured_pieces.size() << ")\n";
+        }
+
+        // Expected sequences as provided for verification
+        const std::vector<std::pair<std::string, std::vector<std::string>>> expected_sequences = {
+            {"B7", {"C4", "C2", "E2", "G2", "E4", "C6"}},
+            {"B7", {"C4", "C2", "E2", "G2", "E4", "E6", "G6", "G4", "C6"}},
+            {"H1", {"C4", "C2", "E2", "E4", "C6", "G2"}},
+            {"H1", {"C4", "C2", "E2", "E4", "E6", "G6", "G4", "C6", "G2"}},
+            {"B3", {"C4", "E6", "G6", "G4", "E2", "C2"}},
+            {"B7", {"C4", "E6", "G6", "G4", "G2", "E4", "C6"}},
+            {"H1", {"C4", "E6", "G6", "G4", "E4", "C6", "G2"}},
+            {"B7", {"E4", "E2", "G4", "G6", "E6", "G2", "C6"}},
+            {"D1", {"E4", "E2", "G4", "G6", "E6", "C4", "C2"}},
+            {"H1", {"E4", "E2", "G4", "G6", "E6", "C6", "G2"}},
+            {"B7", {"E4", "G2", "C6"}},
+            {"B7", {"E4", "G4", "E2", "C2", "C4", "G2", "C6"}},
+            {"H1", {"E4", "G4", "E2", "C2", "C4", "C6", "G2"}},
+            {"H5", {"E4", "G4", "E2", "C2", "C4", "E6", "G6"}},
+            {"B7", {"E4", "G4", "G6", "E6", "G2", "C6"}},
+            {"H1", {"E4", "G4", "G6", "E6", "C6", "G2"}},
+            {"H1", {"E4", "C6", "G2"}},
+            {"D1", {"C6", "E4", "E2", "G4", "G6", "E6", "C4", "C2"}},
+            {"H5", {"C6", "E4", "G4", "E2", "C2", "C4", "E6", "G6"}},
+            {"B7", {"E6", "C4", "C2", "E2", "G2", "E4", "C6"}},
+            {"H1", {"E6", "C4", "C2", "E2", "E4", "C6", "G2"}},
+            {"F7", {"E6", "C4", "C2", "E2", "G4", "G6"}}
+        };
+
+        // Verification: Check that all expected sequences are found
+        INFO("\n=== VERIFICATION ===");
+        std::cout << "\n=== VERIFICATION ===\n";
+        bool all_verified = true;
+        
+        for (const auto& [expected_target, expected_captures] : expected_sequences) {
+            bool found = false;
+            for (std::size_t i = 0; i < moves.size() && !found; ++i) {
+                const auto& actual_position = moves.get_position(i);
+                const auto& actual_captured_pieces = moves.get_capture_pieces(i);
+                
+                if (actual_position.to_string() == expected_target && 
+                    actual_captured_pieces.size() == expected_captures.size()) {
+                    
+                    // Check if captures match (order matters)
+                    bool captures_match = true;
+                    for (std::size_t j = 0; j < expected_captures.size(); ++j) {
+                        if (actual_captured_pieces[j].to_string() != expected_captures[j]) {
+                            captures_match = false;
+                            break;
+                        }
+                    }
+                    
+                    if (captures_match) {
+                        found = true;
+                    }
+                }
+            }
+            
+            if (!found) {
+                std::string expected_caps_str = "";
+                for (const auto& cap : expected_captures) {
+                    if (!expected_caps_str.empty()) expected_caps_str += " ";
+                    expected_caps_str += cap;
+                }
+                FAIL(std::format("MISSING: Target {} with captures: {} ({})", 
+                               expected_target, expected_caps_str, expected_captures.size()));
+                all_verified = false;
+            }
+        }
+
+        // Check if there are any unexpected sequences
+        for (std::size_t i = 0; i < moves.size(); ++i) {
+            const auto& actual_position = moves.get_position(i);
+            const auto& actual_captured_pieces = moves.get_capture_pieces(i);
+            
+            bool found_in_expected = false;
+            for (const auto& [expected_target, expected_captures] : expected_sequences) {
+                if (actual_position.to_string() == expected_target && 
+                    actual_captured_pieces.size() == expected_captures.size()) {
+                    
+                    bool captures_match = true;
+                    for (std::size_t j = 0; j < expected_captures.size(); ++j) {
+                        if (actual_captured_pieces[j].to_string() != expected_captures[j]) {
+                            captures_match = false;
+                            break;
+                        }
+                    }
+                    
+                    if (captures_match) {
+                        found_in_expected = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (!found_in_expected) {
+                std::string actual_caps_str = "";
+                for (const auto& piece : actual_captured_pieces) {
+                    if (!actual_caps_str.empty()) actual_caps_str += " ";
+                    actual_caps_str += piece.to_string();
+                }
+                FAIL(std::format("UNEXPECTED: Target {} with captures: {} ({})", 
+                               actual_position.to_string(), actual_caps_str, actual_captured_pieces.size()));
+                all_verified = false;
+            }
+        }
+
+        REQUIRE(all_verified);
+        std::cout << "✅ VERIFICATION PASSED: All 22 sequences match expected results exactly!\n";
+        INFO("✅ VERIFICATION PASSED: All 22 sequences match expected results exactly!");
     }
 }
 
@@ -601,7 +727,7 @@ TEST_CASE("DameCaptureAnalyzer - Basic functionality", "[DameCaptureAnalyzer]") 
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         REQUIRE(moves.size() == 1);
         
@@ -621,7 +747,7 @@ TEST_CASE("DameCaptureAnalyzer - Basic functionality", "[DameCaptureAnalyzer]") 
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         REQUIRE_FALSE(moves.has_captured());
     }
@@ -638,7 +764,7 @@ TEST_CASE("DameCaptureAnalyzer - Basic functionality", "[DameCaptureAnalyzer]") 
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         REQUIRE_FALSE(moves.has_captured());
     }
@@ -663,7 +789,7 @@ TEST_CASE("DameAnalyzer - Multiple direction captures", "[DameAnalyzer]") {
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         
         // Should find 4 single captures (one in each direction) but this configuration 
@@ -682,7 +808,7 @@ TEST_CASE("DameAnalyzer - Chain captures", "[DameAnalyzer]") {
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         
         // Should find at least one sequence (single capture of C2)
@@ -719,7 +845,7 @@ TEST_CASE("DameAnalyzer - Deduplication", "[DameAnalyzer]") {
         };
         Board board(pieces);
         
-        Analyzer dca(board);
+        Explorer dca(board);
         const auto moves = dca.find_valid_moves(dame_pos);
         
         // Verify that we don't have duplicate equivalent sequences
@@ -740,7 +866,7 @@ TEST_CASE("DameAnalyzer - Deduplication", "[DameAnalyzer]") {
 TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer]") {
     SECTION("Invalid position coordinates") {
         Board board; // Empty board
-        Analyzer dca(board);
+        Explorer dca(board);
         
         // Test with invalid coordinates - Position constructor will throw
         REQUIRE_THROWS_AS(Position(9, 9), std::out_of_range);
@@ -758,7 +884,7 @@ TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer
                 {edge_pos, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::DAME}},
             };
             Board board(pieces);
-            Analyzer dca(board);
+            Explorer dca(board);
             
             // Should not throw, just return available moves (likely regular moves)
             REQUIRE_NOTHROW(dca.find_valid_moves(edge_pos));
@@ -780,7 +906,7 @@ TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer
             // Leave SW and SE directions partially open for regular moves
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -798,7 +924,7 @@ TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer
             {Position{"F5"}, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -822,7 +948,7 @@ TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer
             {Position{"F7"}, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}}, // Block landing
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -837,7 +963,7 @@ TEST_CASE("DameAnalyzer - Edge Cases and Comprehensive Coverage", "[DameAnalyzer
             // No other pieces, so only regular moves available
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -868,7 +994,7 @@ TEST_CASE("DameAnalyzer - Deduplication Edge Cases", "[DameAnalyzer]") {
             {Position{"C4"}, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -889,7 +1015,7 @@ TEST_CASE("DameAnalyzer - Black Dame Pieces", "[DameAnalyzer]") {
             {Position{"E6"}, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer dca(board);
+        Explorer dca(board);
         
         const auto moves = dca.find_valid_moves(dame_pos);
         
@@ -911,7 +1037,7 @@ TEST_CASE("DameAnalyzer - Black Dame Pieces", "[DameAnalyzer]") {
 }
 
 // Tests based on main.cpp test functions - using index-based approach
-TEST_CASE("Analyzer - Dame complex capture sequences (from main)", "[Analyzer]") {
+TEST_CASE("Explorer - Dame complex capture sequences (from main)", "[Explorer]") {
     SECTION("Complex capture pattern with 22 unique sequences") {
         constexpr Position focus{"D5"};
         const Pieces pieces = {
@@ -927,7 +1053,7 @@ TEST_CASE("Analyzer - Dame complex capture sequences (from main)", "[Analyzer]")
             {Position{"G6"}, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
 
         const auto& moves = analyzer.find_valid_moves(focus);
         REQUIRE(moves.has_captured());
@@ -971,7 +1097,7 @@ TEST_CASE("Analyzer - Dame complex capture sequences (from main)", "[Analyzer]")
     }
 }
 
-TEST_CASE("Analyzer - Dame normal moves (from main)", "[Analyzer]") {
+TEST_CASE("Explorer - Dame normal moves (from main)", "[Explorer]") {
     SECTION("Dame with friendly piece blocking some moves") {
         constexpr Position focus{"D5"};
         const Pieces pieces = {
@@ -979,7 +1105,7 @@ TEST_CASE("Analyzer - Dame normal moves (from main)", "[Analyzer]") {
             {Position{"B3"}, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
 
         const auto& moves = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(moves.has_captured());  // Should have regular moves, not captures
@@ -1030,14 +1156,14 @@ TEST_CASE("Analyzer - Dame normal moves (from main)", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Pion normal moves (from main)", "[Analyzer]") {
+TEST_CASE("Explorer - Pion normal moves (from main)", "[Explorer]") {
     SECTION("Pion at edge position with limited moves") {
         constexpr Position focus{"E8"};
         const Pieces pieces = {
             {focus, PieceInfo{.color = PieceColor::WHITE, .type = PieceType::PION}}
         };
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
 
         const auto& moves = analyzer.find_valid_moves(focus);
         REQUIRE_FALSE(moves.has_captured());  // Should have regular moves
@@ -1058,7 +1184,7 @@ TEST_CASE("Analyzer - Pion normal moves (from main)", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Pion capture sequences (from main)", "[Analyzer]") {
+TEST_CASE("Explorer - Pion capture sequences (from main)", "[Explorer]") {
     SECTION("Pion multiple capture sequences") {
         constexpr Position focus{"E8"};
         const Pieces pieces = {
@@ -1073,7 +1199,7 @@ TEST_CASE("Analyzer - Pion capture sequences (from main)", "[Analyzer]") {
             {Position{"F7"}, PieceInfo{.color = PieceColor::BLACK, .type = PieceType::PION}},
         };
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
 
         const auto& moves = analyzer.find_valid_moves(focus);
         REQUIRE(moves.has_captured());
@@ -1130,7 +1256,7 @@ TEST_CASE("Analyzer - Pion capture sequences (from main)", "[Analyzer]") {
     }
 }
 
-TEST_CASE("Analyzer - Capture attempt with landing outside board", "[Analyzer]") {
+TEST_CASE("Explorer - Capture attempt with landing outside board", "[Explorer]") {
     SECTION("White pion at C2 trying to capture black pion at B1 (NW direction)") {
         // This should test the exact scenario for line 100:
         // White pion at C2 (2,1) tries to capture black pion at B1 (1,0)
@@ -1150,7 +1276,7 @@ TEST_CASE("Analyzer - Capture attempt with landing outside board", "[Analyzer]")
         };
         
         Board board(pieces);
-        Analyzer analyzer(board);
+        Explorer analyzer(board);
         
         // Manually verify the landing position would be invalid
         int landing_x = black_pos.x() - 1;  // 1 - 1 = 0

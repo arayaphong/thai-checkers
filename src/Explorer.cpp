@@ -1,4 +1,4 @@
-#include "Analyzer.h"
+#include "Explorer.h"
 #include <stdexcept>
 #include <array>
 #include <algorithm>
@@ -8,15 +8,15 @@
 #include <utility>
 
 // Static member definition
-constexpr std::array<AnalyzerDirectionDelta, 4> Analyzer::dir_deltas;
+constexpr std::array<AnalyzerDirectionDelta, 4> Explorer::dir_deltas;
 
-void Analyzer::validate_position(const Board& board, const Position& pos) {
+void Explorer::validate_position(const Board& board, const Position& pos) {
     if (!board.is_occupied(pos)) [[unlikely]] {
         throw std::invalid_argument("Position is not occupied");
     }
 }
 
-const std::vector<AnalyzerDirectionDelta>& Analyzer::get_valid_directions(
+const std::vector<AnalyzerDirectionDelta>& Explorer::get_valid_directions(
     const Board& board, const Position& pos) noexcept {
     const bool is_dame = board.is_dame_piece(pos);
     const bool is_black = board.is_black_piece(pos);
@@ -44,7 +44,7 @@ const std::vector<AnalyzerDirectionDelta>& Analyzer::get_valid_directions(
     return is_black ? down_moves : up_moves;
 }
 
-std::optional<AnalyzerCaptureMove> Analyzer::find_capture_in_direction(
+std::optional<AnalyzerCaptureMove> Explorer::find_capture_in_direction(
     const Board& board, const Position& pos, const AnalyzerDirectionDelta& delta, bool is_dame) noexcept {
     
     const bool player_is_black = board.is_black_piece(pos);
@@ -137,12 +137,12 @@ std::optional<AnalyzerCaptureMove> Analyzer::find_capture_in_direction(
     return std::nullopt;
 }
 
-void Analyzer::find_capture_sequences_recursive(
-    Board board, // Copy by value for simulation
+void Explorer::find_capture_sequences_recursive(
+    Board board,
     const Position& current_pos,
-    std::set<Position> captured_pieces,
+    std::uint64_t captured_mask,
     CaptureSequence current_sequence,
-    CaptureSequences& all_sequences) const {
+    std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const {
     
     std::vector<AnalyzerCaptureMove> valid_captures;
     const auto& valid_directions = get_valid_directions(board, current_pos);
@@ -163,10 +163,11 @@ void Analyzer::find_capture_sequences_recursive(
     // Convert to vector for easier manipulation
     std::ranges::copy(capture_moves, std::back_inserter(valid_captures));
     
-    // If no captures are available, finalize this sequence if it's not empty
+    // If no captures are available, finalize this sequence if not empty
     if (valid_captures.empty()) [[likely]] {
         if (!current_sequence.empty()) [[likely]] {
-            all_sequences.insert(current_sequence);
+            SequenceKey key{.captured_mask = captured_mask, .final_pos = current_pos};
+            unique_sequences.try_emplace(key, std::move(current_sequence));
         }
         return;
     }
@@ -175,13 +176,14 @@ void Analyzer::find_capture_sequences_recursive(
     for (const auto& [captured_piece, landing_position] : valid_captures) {
         // Create new state for this capture using more modern initialization
         auto new_board = Board::copy(board);
-        auto new_captured = captured_pieces;
+    auto new_mask = captured_mask;
         auto new_sequence = current_sequence;
         
         // Apply the capture
         new_board.remove_piece(captured_piece);
         new_board.move_piece(current_pos, landing_position);
-        new_captured.insert(captured_piece);
+    // Update mask (position hash/index guaranteed < 32 on 8x8 half squares)
+    new_mask |= (1ull << captured_piece.hash());
         
         // Add captured position and landing position to sequence
         new_sequence.emplace_back(captured_piece);
@@ -189,22 +191,24 @@ void Analyzer::find_capture_sequences_recursive(
         
         // Recursively find more captures from the landing position
         find_capture_sequences_recursive(
-            std::move(new_board), landing_position, 
-            std::move(new_captured), std::move(new_sequence), all_sequences);
+            std::move(new_board), landing_position,
+            new_mask, std::move(new_sequence), unique_sequences);
     }
 }
 
-Options Analyzer::find_valid_moves(const Position& from) const {
+Options Explorer::find_valid_moves(const Position& from) const {
     validate_position(board, from);
     
-    // Check for captures first - they are mandatory in Thai Checkers
-    // Inline the capture sequence finding logic to avoid deprecated method call
-    CaptureSequences all_sequences;
+    // Check for captures first - they are mandatory in Thai Checkers.
+    // We'll build a map keyed by (captured set, final position) to avoid storing equivalent sequences multiple times.
+    std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash> unique_sequences;
     const CaptureSequence empty_sequence;
-    const std::set<Position> no_captured_pieces;
-    
-    find_capture_sequences_recursive(board, from, no_captured_pieces, empty_sequence, all_sequences);
-    const auto capture_sequences = deduplicate_equivalent_sequences(all_sequences);
+    find_capture_sequences_recursive(board, from, 0ull, empty_sequence, unique_sequences);
+
+    CaptureSequences capture_sequences;
+    for (auto & kv : unique_sequences) {
+        capture_sequences.insert(std::move(kv.second));
+    }
     
     if (!capture_sequences.empty()) {
         return Options(capture_sequences);
@@ -215,42 +219,9 @@ Options Analyzer::find_valid_moves(const Position& from) const {
     return Options(regular_positions);
 }
 
-CaptureSequences Analyzer::deduplicate_equivalent_sequences(const CaptureSequences& all_sequences) {
-    // Map from (captured_pieces, final_position) to representative sequence
-    std::map<std::pair<std::set<Position>, Position>, CaptureSequence> unique_sequences;
-    
-    for (const auto& sequence : all_sequences) {
-        // Extract captured pieces using modern range-based approach
-        std::set<Position> captured_pieces;
-        
-        // Use structured bindings with enumeration for clarity
-        for (std::size_t i = 0; const auto& pos : sequence) {
-            if (i % 2 == 0) { // Even indices are captured pieces
-                captured_pieces.insert(pos);
-            }
-            ++i;
-        }
-        
-        const Position final_position = sequence.back(); // Last element is the final landing position
-        const auto key = std::make_pair(std::move(captured_pieces), final_position);
-        
-        // Use try_emplace to avoid unnecessary lookups and copies
-        unique_sequences.try_emplace(key, sequence);
-    }
-    
-    // Convert back to CaptureSequences using ranges and move semantics
-    CaptureSequences result;
-    auto sequence_values = unique_sequences 
-        | std::views::values;
-    
-    for (auto&& sequence : sequence_values) {
-        result.insert(std::move(sequence));
-    }
-    
-    return result;
-}
+// Removed deduplicate_equivalent_sequences: logic integrated into recursion
 
-Positions Analyzer::find_regular_moves(const Position& from) const {
+Positions Explorer::find_regular_moves(const Position& from) const {
     validate_position(board, from);
 
     const auto& valid_directions = get_valid_directions(board, from);

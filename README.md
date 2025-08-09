@@ -51,22 +51,21 @@ thai-checkers/
 ├── src/                 # Source files
 │   ├── main.cpp        # Main application entry point
 │   ├── Board.cpp       # Game board implementation
-│   ├── Analyzer.cpp    # Unified piece movement analysis
+│   ├── Explorer.cpp    # Unified piece movement analysis
 │   ├── Position.cpp    # Board position utilities
 │   └── Options.cpp     # Configuration options
 ├── include/            # Header files
 │   ├── Board.h         # Game board interface
-│   ├── Analyzer.h      # Unified analyzer interface
-│   ├── AnalyzerTypes.h # Analyzer type definitions
+│   ├── Explorer.h      # Unified analyzer interface
 │   ├── Position.h      # Position utilities
 │   ├── Piece.h         # Piece definitions
 │   ├── Options.h       # Configuration options
 │   └── main.h          # Main application interface
 ├── tests/              # Unit tests
 │   ├── BoardTest.cpp
-│   ├── AnalyzerTest.cpp
-│   ├── DameAnalyzerTest.cpp  # Dame-focused tests using unified Analyzer
-│   ├── PionAnalyzerTest.cpp  # Pion-focused tests using unified Analyzer
+│   ├── ExplorerTest.cpp
+│   ├── DameAnalyzerTest.cpp  # Dame-focused tests using unified Explorer
+│   ├── PionAnalyzerTest.cpp  # Pion-focused tests using unified Explorer
 │   └── PositionTest.cpp
 ├── build/              # Build output (generated)
 ├── .vscode/            # VS Code configuration
@@ -105,14 +104,14 @@ The project includes comprehensive code coverage analysis tools:
 
 - **Line coverage analysis** with detailed reporting
 - **HTML reports** with interactive visualization
-- **Unified analyzer coverage** for the integrated Analyzer class
+- **Unified analyzer coverage** for the integrated Explorer class
 - **Test execution analysis** with assertion counts
 - **Comprehensive game logic validation**
 
 ### Current Coverage Status
 
 - **Overall Project**: High line coverage across all components
-- **Unified Analyzer**: Comprehensive coverage for both piece types
+- **Unified Explorer**: Comprehensive coverage for both piece types
 - All unit tests passing with full test suite coverage
 
 ## Getting Started

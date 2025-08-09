@@ -7,8 +7,8 @@ add_executable(PositionTest
     PositionTest.cpp
 )
 
-add_executable(AnalyzerTest
-    AnalyzerTest.cpp
+add_executable(ExplorerTest
+    ExplorerTest.cpp
 )
 
 
@@ -23,7 +23,7 @@ target_include_directories(PositionTest
     ${CMAKE_CURRENT_LIST_DIR}/../include
 )
 
-target_include_directories(AnalyzerTest
+target_include_directories(ExplorerTest
     PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/../include
 )
@@ -42,7 +42,7 @@ target_link_libraries(PositionTest
     Catch2::Catch2WithMain
 )
 
-target_link_libraries(AnalyzerTest
+target_link_libraries(ExplorerTest
     PRIVATE
     thai_checkers_lib
     Catch2::Catch2WithMain
@@ -52,4 +52,4 @@ target_link_libraries(AnalyzerTest
 # Register the test with CTest
 add_test(NAME BoardTest COMMAND BoardTest)
 add_test(NAME PositionTest COMMAND PositionTest)
-add_test(NAME AnalyzerTest COMMAND AnalyzerTest)
+add_test(NAME ExplorerTest COMMAND ExplorerTest)

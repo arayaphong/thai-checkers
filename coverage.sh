@@ -56,13 +56,13 @@ regenerate_coverage() {
 
     # Step 3: Run all tests to generate fresh .gcda files
     echo "🧪 Step 3: Running all tests..."
-    echo "  → Running AnalyzerTest..."
-    ./build/tests/AnalyzerTest > /dev/null 2>&1 || echo "    ⚠️  AnalyzerTest had issues"
+    echo "  → Running ExplorerTest..."
+    ./build/tests/ExplorerTest > /dev/null 2>&1 || echo "    ⚠️  ExplorerTest had issues"
 
-    echo "  → Running DameAnalyzerTest (using unified Analyzer)..."
+    echo "  → Running DameAnalyzerTest (using unified Explorer)..."
     ./build/tests/DameAnalyzerTest > /dev/null 2>&1 || echo "    ⚠️  DameAnalyzerTest had issues"
 
-    echo "  → Running PionAnalyzerTest (using unified Analyzer)..."
+    echo "  → Running PionAnalyzerTest (using unified Explorer)..."
     ./build/tests/PionAnalyzerTest > /dev/null 2>&1 || echo "    ⚠️  PionAnalyzerTest had issues"
 
     echo "  → Running other tests..."
@@ -74,8 +74,8 @@ regenerate_coverage() {
     echo "📊 Step 4: Generating coverage files..."
     cd "$BUILD_DIR"
 
-    echo "  → Generating Analyzer.cpp.gcov..."
-    gcov CMakeFiles/thai_checkers_lib.dir/src/Analyzer.cpp.gcda > /dev/null 2>&1 || echo "    ⚠️  Analyzer gcov generation had issues"
+    echo "  → Generating Explorer.cpp.gcov..."
+    gcov CMakeFiles/thai_checkers_lib.dir/src/Explorer.cpp.gcda > /dev/null 2>&1 || echo "    ⚠️  Explorer gcov generation had issues"
 
     # Step 5: Try to generate lcov report (optional)
     echo "📈 Step 5: Attempting lcov report generation..."
@@ -210,7 +210,7 @@ analyze_coverage() {
     }
 
     # Analyze the unified analyzer
-    analyze_analyzer_coverage "Analyzer" "Analyzer"
+    analyze_analyzer_coverage "Explorer" "Explorer"
 
     echo ""
     echo "🧪 TEST FILE ANALYSIS:"
@@ -241,7 +241,7 @@ analyze_coverage() {
         fi
     }
 
-    analyze_test_coverage "AnalyzerTest"
+    analyze_test_coverage "ExplorerTest"
     analyze_test_coverage "DameAnalyzerTest"
     analyze_test_coverage "PionAnalyzerTest"
     analyze_test_coverage "BoardTest"
@@ -251,7 +251,7 @@ analyze_coverage() {
     echo ""
     echo "⚖️  UNIFIED ANALYZER ANALYSIS:"
     echo "--------------------------------------------"
-    echo "🔸 Unified Analyzer Features:"
+    echo "🔸 Unified Explorer Features:"
     echo "   - Handles both Dame and Pion pieces automatically"
     echo "   - Multi-directional movement for Dames (NW, NE, SW, SE)"
     echo "   - Forward-only movement for Pions (color dependent)"
@@ -282,7 +282,7 @@ analyze_coverage() {
     echo "📋 COVERAGE ANALYSIS SUMMARY:"
     echo "--------------------------------------------"
     echo "✅ Test Coverage Assessment:"
-    echo "   - Analyzer.cpp: HIGH coverage for unified implementation"
+    echo "   - Explorer.cpp: HIGH coverage for unified implementation"
     echo "   - All major functions tested for both piece types"
     echo "   - Dame and Pion logic comprehensively covered"
     echo "   - Edge cases covered for all scenarios"
@@ -294,9 +294,9 @@ analyze_coverage() {
     echo "   - Additional integration testing scenarios"
     echo ""
     echo "🧪 Test Files Analyzed:"
-    echo "   - AnalyzerTest.cpp (comprehensive unified coverage)"
-    echo "   - DameAnalyzerTest.cpp (dame-focused tests using unified Analyzer)"
-    echo "   - PionAnalyzerTest.cpp (pion-focused tests using unified Analyzer)"
+    echo "   - ExplorerTest.cpp (comprehensive unified coverage)"
+    echo "   - DameAnalyzerTest.cpp (dame-focused tests using unified Explorer)"
+    echo "   - PionAnalyzerTest.cpp (pion-focused tests using unified Explorer)"
     echo "   - BoardTest.cpp, PositionTest.cpp"
     echo "   - Complete game logic validation"
     echo ""

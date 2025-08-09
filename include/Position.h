@@ -5,6 +5,7 @@
 #include <functional>
 #include <stdexcept>
 #include <cstddef>
+#include <cstdint>
 #include <compare>
 #include <format>
 #include <concepts>
@@ -26,8 +27,22 @@ concept PositionStringLike = requires(T t) {
 
 class Position {
 private:
-    int x_;
-    int y_;
+    std::uint8_t index_;
+
+    // Helper methods to convert between index and coordinates
+    [[nodiscard]] constexpr int index_to_x(std::uint8_t idx) const noexcept {
+        const auto y = idx / (board_size / 2);
+        const auto x_base = (idx % (board_size / 2)) * 2;
+        return x_base + ((x_base + y) % 2 == 0 ? 1 : 0);
+    }
+    
+    [[nodiscard]] constexpr int index_to_y(std::uint8_t idx) const noexcept {
+        return idx / (board_size / 2);
+    }
+    
+    [[nodiscard]] static constexpr std::uint8_t coords_to_index(int x, int y) noexcept {
+        return static_cast<std::uint8_t>((x / 2) + ((board_size / 2) * y));
+    }
 
 public:
     // Modern C++20 constexpr for compile-time constants
@@ -88,16 +103,19 @@ public:
         return Position{coords.x, coords.y};
     }
 
-    // Default constructor creates first valid position (A1 = {0,0} is invalid, so use B1 = {1,0})
-    constexpr Position() noexcept : x_{1}, y_{0} {}
+    // Default constructor creates first valid position (index 0)
+    constexpr Position() noexcept : index_{0} {}
+    
+    // Direct index constructor
+    explicit constexpr Position(std::uint8_t index) noexcept : index_{index} {}
     
     // C++20 requires clause for constructor validation
     template<Coordinate CoordType>
     constexpr Position(CoordType x, CoordType y) 
         requires(std::convertible_to<CoordType, int>)
-        : x_{static_cast<int>(x)}, y_{static_cast<int>(y)} 
+        : index_{coords_to_index(static_cast<int>(x), static_cast<int>(y))}
     {
-        if (!is_valid(x_, y_)) {
+        if (!is_valid(x, y)) {
             throw std::out_of_range("Invalid position");
         }
     }
@@ -106,31 +124,40 @@ public:
     template<PositionStringLike StringType>
     constexpr Position(const StringType& pos_str) 
         requires requires { pos_str[0]; pos_str[1]; }
-        : x_{pos_str[0] - 'A'}, y_{pos_str[1] - '1'} 
+        : index_{coords_to_index(pos_str[0] - 'A', pos_str[1] - '1')}
     {
-        if (!is_valid(x_, y_)) {
+        const int x = pos_str[0] - 'A';
+        const int y = pos_str[1] - '1';
+        if (!is_valid(x, y)) {
             throw std::out_of_range("Invalid position string");
         }
     }
     
     // Legacy C-array constructor
-    constexpr Position(const char pos_str[2]) : x_{pos_str[0] - 'A'}, y_{pos_str[1] - '1'} {
-        if (!pos_str || !is_valid(x_, y_)) {
+    constexpr Position(const char pos_str[2]) 
+        : index_{coords_to_index(pos_str[0] - 'A', pos_str[1] - '1')} 
+    {
+        if (!pos_str) {
+            throw std::out_of_range("Invalid position string");
+        }
+        const int x = pos_str[0] - 'A';
+        const int y = pos_str[1] - '1';
+        if (!is_valid(x, y)) {
             throw std::out_of_range("Invalid position string");
         }
     }
 
     // Getters with nodiscard and noexcept specifiers
-    [[nodiscard]] constexpr int x() const noexcept { return x_; }
-    [[nodiscard]] constexpr int y() const noexcept { return y_; }
+    [[nodiscard]] constexpr int x() const noexcept { return index_to_x(index_); }
+    [[nodiscard]] constexpr int y() const noexcept { return index_to_y(index_); }
 
     // C++20 constexpr improvements
     [[nodiscard]] constexpr std::size_t hash() const noexcept {
-        return (x_ / 2) + ((board_size / 2) * y_);
+        return static_cast<std::size_t>(index_);
     }
 
     [[nodiscard]] constexpr bool is_valid() const noexcept {
-        return is_valid(x_, y_);
+        return index_ < max_positions() && is_valid(x(), y());
     }
     
     // Modern string formatting with std::format (C++20)
@@ -161,7 +188,7 @@ public:
     
     // C++20 constexpr conversion to coordinate pair
     [[nodiscard]] constexpr CoordinatePair to_pair() const noexcept {
-        return CoordinatePair{.x = x_, .y = y_};
+        return CoordinatePair{.x = x(), .y = y()};
     }
 };
 

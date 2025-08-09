@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <string>
 #include <format>
+#include <cstdint>
 
 // C++20 improvements to non-constexpr functions
 Position Position::from_index(int index) {
@@ -10,12 +11,7 @@ Position Position::from_index(int index) {
                                           index, max_positions() - 1));
     }
     
-    // Modern C++20 structured bindings and constexpr improvements
-    const auto y = index / 4;
-    const auto x_base = 2 * (index % 4);
-    const auto x = x_base + (((x_base + y) % 2) == 0 ? 1 : 0);
-
-    return Position{x, y};
+    return Position{static_cast<std::uint8_t>(index)};
 }
 
 Position Position::from_hash(std::size_t hash_value) {
@@ -24,14 +20,7 @@ Position Position::from_hash(std::size_t hash_value) {
                                           hash_value, max_positions() - 1));
     }
     
-    // C++20 improvements with better type safety
-    const auto y = static_cast<int>(hash_value / (board_size / 2));
-    const auto x = static_cast<int>((hash_value % (board_size / 2)) * 2);
-    
-    // Adjust x based on the row to ensure we're on a black square
-    const auto adjusted_x = x + ((x + y) % 2 == 0 ? 1 : 0);
-    
-    return Position{adjusted_x, y};
+    return Position{static_cast<std::uint8_t>(hash_value)};
 }
 
 std::string Position::to_string() const noexcept {

@@ -7,24 +7,23 @@ namespace {
     constexpr std::string_view CAPTURE_TYPE = "CaptureSequence";
 }
 
-// Modern C++20 implementation focusing on complex operations that benefit from separate compilation
+// Modern C++20 implementation focusing on utility functions
 // Uses modules-like organization and consteval for compile-time computation where possible
 
 namespace Options_impl {
     
     /**
-     * @brief Validates capture sequence integrity using C++20 concepts and ranges
-     * @param sequence The capture sequence to validate
-     * @return True if sequence is valid (even indices represent captured pieces)
+     * @brief Validates move info integrity using C++20 concepts and ranges
+     * @param move_info The move info to validate
+     * @return True if move info is valid
      */
-    [[nodiscard]] constexpr bool validate_capture_sequence(const CaptureSequence& sequence) noexcept {
-        if (sequence.empty()) return false;
+    [[nodiscard]] constexpr bool validate_move_info(const MoveInfo& move_info) noexcept {
+        // Check that target position is valid
+        if (!move_info.target_position.is_valid()) return false;
         
-        // Use C++20 ranges to check sequence integrity
-        auto indices = std::views::iota(std::size_t{0}, sequence.size());
-        return std::ranges::all_of(indices, [&sequence](const auto i) {
-            return i == 0 || sequence[i] != sequence[i-1]; // No consecutive duplicates
-        });
+        // Check that all captured positions are valid
+        return std::ranges::all_of(move_info.captured_positions, 
+                                  [](const Position& pos) { return pos.is_valid(); });
     }
 
     /**

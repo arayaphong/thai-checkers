@@ -2,7 +2,7 @@
 
 #include <vector>
 #include <set>
-#include <map>
+#include <unordered_map>
 #include <optional>
 #include <array>
 #include <ranges>
@@ -17,9 +17,7 @@
 #include "Position.h"
 #include "Board.h"
 #include "Piece.h"
-// Move.h include removed - not needed after refactoring to use facade pattern
 #include "Options.h"
-#include "AnalyzerTypes.h"
 
 /**
  * @brief Analyzes movement and capture possibilities for both Pion and Dame pieces in Thai Checkers.
@@ -30,7 +28,7 @@
  * - Pions can only move diagonally forward and capture opponent pieces by jumping over them
  * - Dames can move diagonally in any direction and capture opponent pieces by jumping over them
  */
-class Analyzer {
+class Explorer {
 private:
     const Board& board;
 
@@ -78,26 +76,48 @@ private:
      * @param current_sequence Current capture sequence being built
      * @param all_sequences Output container for all found sequences
      */
+    // Bitmask-based key (up to 32 playable squares on 8x8 checkers board)
+    struct SequenceKey {
+        std::uint64_t captured_mask{}; // bit i set => position with index/hash i captured
+        Position final_pos{};          // landing square at end of sequence
+        [[nodiscard]] constexpr auto operator<=>(const SequenceKey&) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const SequenceKey&) const noexcept = default;
+    };
+
+    // Custom hash for SequenceKey
+    struct SequenceKeyHash {
+        [[nodiscard]] constexpr std::size_t operator()(const SequenceKey& k) const noexcept {
+            // Simple mix: final_pos hash in low bits, multiplicative scramble of mask
+            // Enough for tiny key set (number of capture sequences is small)
+            const auto posh = k.final_pos.hash();
+            // 64-bit mix constant (from splitmix64)
+            std::uint64_t x = k.captured_mask + 0x9E3779B97F4A7C15ull;
+            x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+            x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
+            x ^= (x >> 31);
+            return static_cast<std::size_t>(x ^ (posh + 0x9e3779b97f4a7c15ull + (x<<6) + (x>>2)));
+        }
+    };
+
     void find_capture_sequences_recursive(
         Board board, // Copy by value for simulation
         const Position& current_pos,
-        std::set<Position> captured_pieces,
+        std::uint64_t captured_mask,
         CaptureSequence current_sequence,
-        CaptureSequences& all_sequences) const;
+        std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const;
 
 public:
     /**
-     * @brief Constructs an Analyzer for the given board.
+     * @brief Constructs an Explorer for the given board.
      * @param board The board to analyze (stored as const reference).
      */
-    explicit constexpr Analyzer(const Board& board) noexcept : board(board) {}
+    explicit constexpr Explorer(const Board& board) noexcept : board(board) {}
 
     // C++20: Explicitly defaulted special members for better clarity
-    ~Analyzer() = default;
-    Analyzer(const Analyzer&) = default;
-    Analyzer& operator=(const Analyzer&) = default;
-    Analyzer(Analyzer&&) = default;
-    Analyzer& operator=(Analyzer&&) = default;
+    ~Explorer() = default;
+    Explorer(const Explorer&) = default;
+    Explorer(Explorer&&) = default;
+
 
     /**
      * @brief Finds all valid moves for a piece at the given position.
@@ -108,17 +128,6 @@ public:
     [[nodiscard]] Options find_valid_moves(const Position& from) const;
 
 private:
-    /**
-     * @brief Deduplicates sequences that have the same captured pieces and final position.
-     * 
-     * In Thai Checkers, sequences that capture the same pieces and end at the same position
-     * are considered equivalent, regardless of the order of captures.
-     * 
-     * @param all_sequences Input sequences to deduplicate
-     * @return Deduplicated set of capture sequences
-     */
-    [[nodiscard]] static CaptureSequences deduplicate_equivalent_sequences(const CaptureSequences& all_sequences);
-
     /**
      * @brief Gets all possible non-capture moves for a piece at the given position.
      * @param from The position of the piece.
