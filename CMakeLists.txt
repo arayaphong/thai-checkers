@@ -59,6 +59,7 @@ add_library(thai_checkers_lib STATIC
     src/Explorer.cpp
     src/Options.cpp
     src/Game.cpp
+    src/Traversal.cpp
     # Add other source files here
 )
 
@@ -72,6 +73,8 @@ target_link_libraries(thai_checkers_main PRIVATE thai_checkers_lib)
 
 if(OpenMP_CXX_FOUND)
     target_link_libraries(thai_checkers_main PRIVATE OpenMP::OpenMP_CXX)
+    # Also apply OpenMP to the library, since it contains parallel code (Traversal.cpp)
+    target_link_libraries(thai_checkers_lib PRIVATE OpenMP::OpenMP_CXX)
     message(STATUS "OpenMP found: enabling parallel build flags")
 else()
     message(STATUS "OpenMP not found: building without OpenMP support")
