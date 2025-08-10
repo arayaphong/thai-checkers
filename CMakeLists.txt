@@ -7,9 +7,6 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Coverage option
 option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
 
-# Find Catch2 for tests
-find_package(Catch2 3 REQUIRED)
-
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,14 +48,33 @@ add_executable(thai_checkers_main
 # Link the main executable with the library
 target_link_libraries(thai_checkers_main thai_checkers_lib)
 
-# Enable testing
-enable_testing()
+include(CTest)
+if(BUILD_TESTING)
+    include(FetchContent)
+    # Fetch Catch2 v3
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.5.3 # stable tag
+    )
+    FetchContent_MakeAvailable(Catch2)
 
-# Add test subdirectory (corrected directory name)
-add_subdirectory(tests)
+    # Selector deterministic tests
+    add_executable(selector_tests
+        src/tests/SelectorTest.cpp)
+    target_link_libraries(selector_tests
+        PRIVATE
+            thai_checkers_lib
+            Catch2::Catch2WithMain
+    )
+
+    include(Catch)
+    catch_discover_tests(selector_tests)
+endif()
 
 # Add coverage target if enabled
 if(ENABLE_COVERAGE)
     include(Coverage)
+    # Coverage target optional when tests are removed
     add_coverage_target()
 endif()

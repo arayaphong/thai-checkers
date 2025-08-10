@@ -41,14 +41,6 @@ private:
     }};
 
     /**
-     * @brief Validates that the given position contains a valid piece.
-     * @param board The game board to check.
-     * @param pos The position to validate.
-     * @throws std::invalid_argument if validation fails.
-     */
-    static void validate_position(const Board& board, const Position& pos);
-
-    /**
      * @brief Gets the valid directions for a piece based on its type and color.
      * @param board The current board state.
      * @param pos The position of the piece.
@@ -122,8 +114,7 @@ public:
     /**
      * @brief Finds all valid moves for a piece at the given position.
      * @param from The starting position of the piece.
-     * @return Options containing either capture sequences or regular move positions.
-     * @throws std::invalid_argument if the position is invalid or doesn't contain a piece.
+    * @return Options containing either capture sequences or regular move positions.
      */
     [[nodiscard]] Options find_valid_moves(const Position& from) const;
 
@@ -131,8 +122,7 @@ private:
     /**
      * @brief Gets all possible non-capture moves for a piece at the given position.
      * @param from The position of the piece.
-     * @return A vector of possible non-capture move positions.
-     * @throws std::invalid_argument if the position is invalid or doesn't contain a piece.
+    * @return A vector of possible non-capture move positions.
      */
     [[nodiscard]] Positions find_regular_moves(const Position& from) const;
 };

@@ -5,10 +5,9 @@
 #include "Position.h"
 #include "Options.h"
 #include <string>
-#include <unordered_set>
 #include <vector>
-#include <optional>
-#include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
 
 
 // Function declarations
@@ -30,18 +29,29 @@ struct Move {
 class Game {
     PieceColor current_player;
     Board current_board;
-    std::unordered_set<Board> model;
+    std::vector<std::size_t> board_move_sequence;
+
+    mutable std::vector<Move> choices_cache_{};
+    mutable bool choices_dirty_ = true;
+    // Repetition detection and termination
+    std::unordered_set<std::size_t> seen_states_{}; // key = board hash ^ mix(player)
+    bool game_over_ = false;
+    [[nodiscard]] std::size_t state_key() const noexcept {
+        return current_board.hash() ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
+    }
 private:
     std::unordered_map<Position, Options> get_moveable_pieces() const;
-    [[nodiscard]] bool is_legal_move(const Move& move) const; // validation helper
-
+    const std::vector<Move>& get_choices() const;
+    Board execute_move(const Move& move);
 public:
     Game();
-    std::vector<Move> get_choices() const;
-    Board execute_move(const Move& move);
-    void print_board() const;
+    [[nodiscard]] std::size_t move_count() const;
+    void select_move(std::size_t index);
+    void print_board() const noexcept;
+    void print_choices() const;
 
     // Accessors
+    [[nodiscard]] const std::vector<std::size_t>& get_move_sequence() const noexcept { return board_move_sequence; }
     [[nodiscard]] const Board& board() const noexcept { return current_board; }
     [[nodiscard]] PieceColor player() const noexcept { return current_player; }
 };

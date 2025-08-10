@@ -46,50 +46,81 @@ std::string board_to_string(const Board& board) {
 }
 
 Game::Game() : current_player(PieceColor::WHITE), current_board(Board::setup()) {
-    model.insert(current_board);
+    board_move_sequence.push_back(current_board.hash());
+    // Track initial state for repetition detection
+    seen_states_.clear();
+    seen_states_.insert(state_key());
+    game_over_ = false;
 }
 
-std::vector<Move> Game::get_choices() const {
-    std::vector<Move> choices;
+const std::vector<Move>& Game::get_choices() const {
+    if (!choices_dirty_) return choices_cache_;
+
+    choices_cache_.clear();
+
+    if (game_over_) {
+        choices_dirty_ = false;
+        return choices_cache_;
+    }
     const auto moveable_pieces = get_moveable_pieces();
 
+    // Gather and sort positions for deterministic iteration order
+    std::vector<Position> from_positions;
+    from_positions.reserve(moveable_pieces.size());
+    for (const auto& kv : moveable_pieces) from_positions.push_back(kv.first);
+    std::sort(from_positions.begin(), from_positions.end(), [](const Position& a, const Position& b){
+        return a.hash() < b.hash();
+    });
+
     bool any_capture = false;
-    for (const auto& [from, options] : moveable_pieces) {
+    for (const auto& from : from_positions) {
+        const auto& options = moveable_pieces.at(from);
+        struct TmpMove { Position to; std::vector<Position> captured; };
+        std::vector<TmpMove> tmp;
+        tmp.reserve(options.size());
         for (std::size_t i = 0; i < options.size(); ++i) {
             const bool is_cap = options.has_captured();
             std::vector<Position> captured = is_cap ? options.get_capture_pieces(i) : std::vector<Position>{};
             any_capture = any_capture || !captured.empty();
-            choices.push_back(Move{from, options.get_position(i), std::move(captured)});
+            tmp.push_back(TmpMove{options.get_position(i), std::move(captured)});
+        }
+        // Sort: captures first handled later, but ensure deterministic order by (to, captured...)
+        std::sort(tmp.begin(), tmp.end(), [](const TmpMove& a, const TmpMove& b){
+            if (a.to.hash() != b.to.hash()) return a.to.hash() < b.to.hash();
+            return a.captured < b.captured; // lexicographic on positions
+        });
+        for (auto& m : tmp) {
+            choices_cache_.push_back(Move{from, m.to, std::move(m.captured)});
         }
     }
 
     if (any_capture) {
         // Keep only capture moves
         std::vector<Move> capture_only;
-        capture_only.reserve(choices.size());
-        for (auto& m : choices) if (m.is_capture()) capture_only.push_back(std::move(m));
-        choices.swap(capture_only);
+        capture_only.reserve(choices_cache_.size());
+        for (auto& m : choices_cache_) if (m.is_capture()) capture_only.push_back(std::move(m));
+        choices_cache_.swap(capture_only);
     }
-    return choices;
+
+    choices_dirty_ = false;
+    return choices_cache_;
 }
 
 std::unordered_map<Position, Options> Game::get_moveable_pieces() const {
+    // IMPORTANT: Don't build a ranges view over a temporary returned from get_pieces().
+    // That creates a dangling view once the temporary is destroyed, leading to UB/hangs.
     const auto analyzer = Explorer(current_board);
-    
-    auto valid_moves_view = current_board.get_pieces(current_player)
-        | std::views::transform([&analyzer](const auto& pair) {
-            return std::make_pair(pair.first, analyzer.find_valid_moves(pair.first));
-        })
-        | std::views::filter([](const auto& pair) { 
-            return !pair.second.empty(); 
-        });
+    const auto pieces = current_board.get_pieces(current_player); // materialize first
 
-    return std::unordered_map<Position, Options>(valid_moves_view.begin(), valid_moves_view.end());
-}
-
-bool Game::is_legal_move(const Move& move) const {
-    const auto legal = get_choices();
-    return std::ranges::any_of(legal, [&move](const Move& m){ return m == move; });
+    std::unordered_map<Position, Options> out;
+    out.reserve(pieces.size());
+    for (const auto& [pos, _info] : pieces) {
+        auto opts = analyzer.find_valid_moves(pos);
+        if (!opts.empty()) {
+            out.emplace(pos, std::move(opts));
+        }
+    }
+    return out;
 }
 
 Board Game::execute_move(const Move& move) {
@@ -97,13 +128,7 @@ Board Game::execute_move(const Move& move) {
     const auto& to = move.to;
     const auto& captured = move.captured;
 
-    if (!current_board.is_occupied(from)) [[unlikely]] {
-        throw std::invalid_argument("No piece at the specified position");
-    }
-
-    if (!is_legal_move(move)) [[unlikely]] {
-        throw std::invalid_argument("Attempted to execute an illegal move");
-    }
+    // Hard removal: assume move is valid (built from get_choices()).
 
     // Execute the specified move
     auto new_board = Board::copy(current_board);
@@ -116,21 +141,63 @@ Board Game::execute_move(const Move& move) {
 
     // Remove captured pieces
     for (const auto& pos : captured) {
-        if (new_board.is_occupied(pos)) {
-            new_board.remove_piece(pos);
-        }
+        new_board.remove_piece(pos);
     }
 
     // Keep track of the new board state
-    model.insert(new_board);
+    board_move_sequence.push_back(new_board.hash());
 
     // Update current player and board state
     current_board = new_board;
     current_player = (current_player == PieceColor::WHITE) ? PieceColor::BLACK : PieceColor::WHITE;
 
+    // Mark cached choices dirty due to state change
+    choices_dirty_ = true;
+
+    // Repetition detection: if this state was seen, end the game (treat as draw)
+    const auto key = state_key();
+    if (!seen_states_.insert(key).second) {
+        game_over_ = true;
+    }
+
     return new_board;
 }
 
-void Game::print_board() const {
+std::size_t Game::move_count() const
+{
+    if (game_over_) return 0;
+    // Safe to call get_choices(); if it were to throw, we wouldn't mark noexcept.
+    // Here we assume underlying operations won't throw in typical use.
+    return get_choices().size();
+}
+
+void Game::select_move(std::size_t index)
+{
+    const auto& choices = get_choices();
+
+    // Keep track of the move sequence
+    board_move_sequence.push_back(index);
+
+    // Execute the selected move
+    (void)execute_move(choices[index]);
+}
+
+void Game::print_board() const noexcept {
     std::cout << board_to_string(current_board);
+}
+
+void Game::print_choices() const {
+    const auto& choices = get_choices();
+    for (const auto& m : choices) {
+        std::cout << "From: " << m.from.to_string() << " To: " << m.to.to_string();
+        if (!m.captured.empty()) {
+            std::cout << " (Captures: ";
+            for (std::size_t i = 0; i < m.captured.size(); ++i) {
+                std::cout << m.captured[i].to_string();
+                if (i + 1 < m.captured.size()) std::cout << ", ";
+            }
+            std::cout << ")";
+        }
+        std::cout << '\n';
+    }
 }

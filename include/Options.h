@@ -56,18 +56,13 @@ class Options {
 private:
     std::vector<MoveInfo> moves_;
     bool has_captures_;
-    bool was_constructed_from_captures_;  // Track original construction type for backward compatibility
 
     /**
      * @brief Processes a capture sequence and extracts target position and captured pieces.
      * @param sequence The capture sequence to process.
      * @return MoveInfo with target position and captured pieces.
      */
-    [[nodiscard]] static MoveInfo process_capture_sequence(const CaptureSequence& sequence) {
-        if (sequence.empty()) {
-            throw std::invalid_argument("Empty capture sequence");
-        }
-        
+    [[nodiscard]] static MoveInfo process_capture_sequence(const CaptureSequence& sequence) {      
         MoveInfo move_info;
         move_info.target_position = sequence.back(); // Last position is the landing position
         
@@ -87,7 +82,7 @@ public:
      * @brief Constructs Options with regular positions.
      * @param positions Container of positions for regular moves.
      */
-    explicit Options(const Positions& positions) : has_captures_(false), was_constructed_from_captures_(false) {
+    explicit Options(const Positions& positions) : has_captures_(false) {
         moves_.reserve(positions.size());
         std::ranges::transform(positions, std::back_inserter(moves_),
                               [](const Position& pos) -> MoveInfo {
@@ -99,7 +94,7 @@ public:
      * @brief Constructs Options with regular positions using move semantics.
      * @param positions Container of positions for regular moves.
      */
-    explicit Options(Positions&& positions) : has_captures_(false), was_constructed_from_captures_(false) {
+    explicit Options(Positions&& positions) : has_captures_(false) {
         moves_.reserve(positions.size());
         for (auto&& pos : positions) {
             moves_.emplace_back(MoveInfo{.target_position = std::move(pos), .captured_positions = {}});
@@ -110,7 +105,7 @@ public:
      * @brief Constructs Options with capture sequences, processing them immediately.
      * @param sequences Container of capture sequences.
      */
-    explicit Options(const CaptureSequences& sequences) : has_captures_(true), was_constructed_from_captures_(true) {
+    explicit Options(const CaptureSequences& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
         std::ranges::transform(sequences, std::back_inserter(moves_),
                               [](const CaptureSequence& seq) -> MoveInfo {
@@ -122,7 +117,7 @@ public:
      * @brief Constructs Options with capture sequences using move semantics, processing them immediately.
      * @param sequences Container of capture sequences.
      */
-    explicit Options(CaptureSequences&& sequences) : has_captures_(true), was_constructed_from_captures_(true) {
+    explicit Options(CaptureSequences&& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
         for (auto&& seq : sequences) {
             moves_.emplace_back(process_capture_sequence(seq));
@@ -160,10 +155,9 @@ public:
      * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const Position& get_position(const std::size_t index) const {
-        if (index >= moves_.size()) [[unlikely]] {
-            throw std::out_of_range("Index out of range");
-        }
-        return moves_[index].target_position;
+        const std::size_t i = moves_.empty() ? 0 : std::min(index, moves_.size() - 1);
+        static const Position kDefault{};
+        return moves_.empty() ? kDefault : moves_[i].target_position;
     }
 
     /**
@@ -174,13 +168,9 @@ public:
      * @throws std::invalid_argument if this was constructed from regular positions (for backward compatibility).
      */
     [[nodiscard]] const Positions& get_capture_pieces(const std::size_t index) const {
-        if (!was_constructed_from_captures_) {
-            throw std::invalid_argument("No capture sequences available");
-        }
-        if (index >= moves_.size()) [[unlikely]] {
-            throw std::out_of_range("Index out of range");
-        }
-        return moves_[index].captured_positions;
+        static const Positions kEmpty;
+        const std::size_t i = std::min(index, moves_.size() - 1);
+        return moves_[i].captured_positions;
     }
 
     /**
@@ -190,10 +180,10 @@ public:
      * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const MoveInfo& get_move_info(const std::size_t index) const {
-        if (index >= moves_.size()) [[unlikely]] {
-            throw std::out_of_range("Index out of range");
-        }
-        return moves_[index];
+        static const MoveInfo kDefault{};
+        if (moves_.empty()) return kDefault;
+        const std::size_t i = std::min(index, moves_.size() - 1);
+        return moves_[i];
     }
 
     /**

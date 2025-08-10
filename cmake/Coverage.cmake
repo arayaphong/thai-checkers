@@ -41,11 +41,10 @@ function(add_coverage_target)
                 # Capture coverage data
                 COMMAND ${LCOV_PATH} --directory . --capture --output-file ${COVERAGE_DIR}/coverage.info
                 
-                # Remove unwanted files (external libraries, tests)
-                COMMAND ${LCOV_PATH} --remove ${COVERAGE_DIR}/coverage.info 
-                    '/usr/*' 
-                    '*/tests/*' 
-                    '*/catch2/*'
+                # Extract only project source files
+                COMMAND ${LCOV_PATH} --extract ${COVERAGE_DIR}/coverage.info 
+                    '${CMAKE_SOURCE_DIR}/*'
+                    --ignore-errors unused
                     --output-file ${COVERAGE_DIR}/coverage_cleaned.info
                 
                 # Generate HTML report
@@ -54,6 +53,7 @@ function(add_coverage_target)
                     --title "Thai Checkers Coverage Report"
                     --show-details
                     --legend
+                    --dark-mode
                 
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                 COMMENT "Generating coverage report"

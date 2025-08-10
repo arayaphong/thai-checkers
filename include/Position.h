@@ -90,8 +90,7 @@ public:
         return Position{static_cast<int>(x), static_cast<int>(y)};
     }
 
-    [[nodiscard]] static Position from_index(int index);
-    [[nodiscard]] static Position from_hash(std::size_t hash_value);
+    [[nodiscard]] static Position from_index(int index) noexcept;
 
     // C++20 designated initializers support through factory
     struct CoordinatePair {
@@ -113,39 +112,17 @@ public:
     template<Coordinate CoordType>
     constexpr Position(CoordType x, CoordType y) 
         requires(std::convertible_to<CoordType, int>)
-        : index_{coords_to_index(static_cast<int>(x), static_cast<int>(y))}
-    {
-        if (!is_valid(x, y)) {
-            throw std::out_of_range("Invalid position");
-        }
-    }
+        : index_{is_valid(x, y) ? coords_to_index(static_cast<int>(x), static_cast<int>(y)) : std::uint8_t{0}} {}
     
-    // C++20 string-like constructor with concepts
+    // C++20 string-like constructor with concepts (non-throwing in hard-removal build)
     template<PositionStringLike StringType>
     constexpr Position(const StringType& pos_str) 
         requires requires { pos_str[0]; pos_str[1]; }
-        : index_{coords_to_index(pos_str[0] - 'A', pos_str[1] - '1')}
-    {
-        const int x = pos_str[0] - 'A';
-        const int y = pos_str[1] - '1';
-        if (!is_valid(x, y)) {
-            throw std::out_of_range("Invalid position string");
-        }
-    }
+        : index_{[&]() { const int x = pos_str[0] - 'A'; const int y = pos_str[1] - '1'; return is_valid(x, y) ? coords_to_index(x, y) : std::uint8_t{0}; }()} {}
     
-    // Legacy C-array constructor
+    // Legacy C-array constructor (non-throwing in hard-removal build)
     constexpr Position(const char pos_str[2]) 
-        : index_{coords_to_index(pos_str[0] - 'A', pos_str[1] - '1')} 
-    {
-        if (!pos_str) {
-            throw std::out_of_range("Invalid position string");
-        }
-        const int x = pos_str[0] - 'A';
-        const int y = pos_str[1] - '1';
-        if (!is_valid(x, y)) {
-            throw std::out_of_range("Invalid position string");
-        }
-    }
+        : index_{[&]() { if (!pos_str) return std::uint8_t{0}; const int x = pos_str[0] - 'A'; const int y = pos_str[1] - '1'; return is_valid(x, y) ? coords_to_index(x, y) : std::uint8_t{0}; }()} {}
 
     // Getters with nodiscard and noexcept specifiers
     [[nodiscard]] constexpr int x() const noexcept { return index_to_x(index_); }

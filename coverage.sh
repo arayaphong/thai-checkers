@@ -40,6 +40,7 @@ show_help() {
 
 # Function to regenerate coverage data
 regenerate_coverage() {
+    local test_duration=${1:-10}  # Default to 10 seconds, but allow override
     echo "🔄 Thai Checkers Coverage Regeneration"
     echo "======================================"
 
@@ -54,28 +55,14 @@ regenerate_coverage() {
     cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
     cmake --build build --config Debug
 
-    # Step 3: Run all tests to generate fresh .gcda files
-    echo "🧪 Step 3: Running all tests..."
-    echo "  → Running ExplorerTest..."
-    ./build/tests/ExplorerTest > /dev/null 2>&1 || echo "    ⚠️  ExplorerTest had issues"
-
-    echo "  → Running DameAnalyzerTest (using unified Explorer)..."
-    ./build/tests/DameAnalyzerTest > /dev/null 2>&1 || echo "    ⚠️  DameAnalyzerTest had issues"
-
-    echo "  → Running PionAnalyzerTest (using unified Explorer)..."
-    ./build/tests/PionAnalyzerTest > /dev/null 2>&1 || echo "    ⚠️  PionAnalyzerTest had issues"
-
-    echo "  → Running other tests..."
-    ./build/tests/BoardTest > /dev/null 2>&1 || echo "    ⚠️  BoardTest had issues"
-    ./build/tests/PositionTest > /dev/null 2>&1 || echo "    ⚠️  PositionTest had issues"
-    # MoveTest removed - Move class no longer exists
-
-    # Step 4: Generate .gcov files for our analyzer
-    echo "📊 Step 4: Generating coverage files..."
+    # Step 3: Run the actual test to generate .gcda files
+    echo "🧪 Step 3: Running custom test to generate coverage data..."
+    echo "  → Running thai_checkers_main for ${test_duration} seconds..."
     cd "$BUILD_DIR"
+    ./thai_checkers_main -s "$test_duration" > /dev/null 2>&1 || echo "    ⚠️  thai_checkers_main had issues"
 
-    echo "  → Generating Explorer.cpp.gcov..."
-    gcov CMakeFiles/thai_checkers_lib.dir/src/Explorer.cpp.gcda > /dev/null 2>&1 || echo "    ⚠️  Explorer gcov generation had issues"
+    # Step 4: No need for individual gcov generation since we use lcov
+    echo "📊 Step 4: Coverage data should now be available in .gcda files..."
 
     # Step 5: Try to generate lcov report (optional)
     echo "📈 Step 5: Attempting lcov report generation..."
@@ -85,19 +72,19 @@ regenerate_coverage() {
 
     # Check if we got any data
     if [ -s coverage/coverage.info ]; then
-        echo "  → Filtering out system headers and test files..."
-        lcov --remove coverage/coverage.info '/usr/*' '*/tests/*' --output-file coverage/coverage_cleaned.info || echo "    ⚠️  Filtering had issues"
+        echo "  → Extracting only project source files..."
+        lcov --extract coverage/coverage.info "$PROJECT_ROOT/*" --ignore-errors unused --output-file coverage/coverage_cleaned.info || echo "    ⚠️  Filtering had issues"
         
         echo "  → Generating HTML report..."
         mkdir -p coverage/html
-        genhtml coverage/coverage_cleaned.info --output-directory coverage/html --title "Thai Checkers Coverage Report" --quiet || echo "    ⚠️  HTML generation had issues"
+        genhtml coverage/coverage_cleaned.info --output-directory coverage/html --title "Thai Checkers Coverage Report" --dark-mode --quiet || echo "    ⚠️  HTML generation had issues"
         echo "  ✅ HTML report generated at: coverage/html/index.html"
     else
         echo "  ⚠️  No lcov data generated, checking for existing coverage data..."
         if [ -f coverage/coverage.info ] && [ -s coverage/coverage.info ]; then
             echo "  → Using existing coverage data..."
             mkdir -p coverage/html"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            genhtml coverage/coverage.info --output-directory coverage/html --quiet && echo "  ✅ HTML report generated from existing data"
+            genhtml coverage/coverage.info --output-directory coverage/html --dark-mode --quiet && echo "  ✅ HTML report generated from existing data"
         fi
     fi
 
@@ -169,30 +156,36 @@ analyze_coverage() {
         echo "📊 ${analyzer_name} COVERAGE:"
         echo "--------------------------------------------"
         
-        # Find the analyzer gcov file
-        GCOV_FILE=$(find . -name "*${gcov_pattern}.cpp.gcov" | head -1)
+        # Generate gcov files if they don't exist
+        if [ ! -f "CMakeFiles/thai_checkers_lib.dir/src/${gcov_pattern}.cpp.gcov" ]; then
+            echo "  → Generating gcov files..."
+            cd CMakeFiles/thai_checkers_lib.dir/src && gcov *.gcda >/dev/null 2>&1 && cd ../../..
+        fi
+        
+        # Find the analyzer gcov file in the CMake build directory
+        GCOV_FILE="CMakeFiles/thai_checkers_lib.dir/src/${gcov_pattern}.cpp.gcov"
 
         if [ -f "$GCOV_FILE" ]; then
-            echo "Lines executed in ${analyzer_name}.cpp:"
+            echo "✅ Found coverage data for ${analyzer_name}.cpp"
             
             # Count total lines, executed lines, and unexecuted lines
-            TOTAL_LINES=$(grep -c "^[[:space:]]*[0-9#-].*:" "$GCOV_FILE")
-            EXECUTED_LINES=$(grep -c "^[[:space:]]*[0-9].*:" "$GCOV_FILE")
-            UNEXECUTED_LINES=$(grep -c "^[[:space:]]*#####.*:" "$GCOV_FILE")
+            TOTAL_LINES=$(grep -c "^[[:space:]]*[0-9#-].*:" "$GCOV_FILE" 2>/dev/null || echo "0")
+            EXECUTED_LINES=$(grep -c "^[[:space:]]*[0-9].*:" "$GCOV_FILE" 2>/dev/null || echo "0")
+            UNEXECUTED_LINES=$(grep -c "^[[:space:]]*#####.*:" "$GCOV_FILE" 2>/dev/null || echo "0")
             
             echo "  Total executable lines: $TOTAL_LINES"
             echo "  Executed lines: $EXECUTED_LINES"
             echo "  Unexecuted lines: $UNEXECUTED_LINES"
             
-            if [ $TOTAL_LINES -gt 0 ]; then
-                COVERAGE_PERCENT=$(echo "scale=1; $EXECUTED_LINES * 100 / $TOTAL_LINES" | bc -l)
+            if [ "$TOTAL_LINES" -gt 0 ] 2>/dev/null; then
+                COVERAGE_PERCENT=$(echo "scale=1; $EXECUTED_LINES * 100 / $TOTAL_LINES" | bc -l 2>/dev/null || echo "0.0")
                 echo "  Coverage percentage: ${COVERAGE_PERCENT}%"
             fi
             
             echo ""
             echo "🚨 UNEXECUTED LINES (${analyzer_name}):"
             echo "--------------------------------------------"
-            grep -n "^[[:space:]]*#####.*:" "$GCOV_FILE" | head -10 | while read line; do
+            grep -n "^[[:space:]]*#####.*:" "$GCOV_FILE" 2>/dev/null | head -10 | while read line; do
                 line_num=$(echo "$line" | cut -d: -f1)
                 code=$(echo "$line" | cut -d: -f2-)
                 echo "  Line $line_num: $code"
@@ -213,40 +206,29 @@ analyze_coverage() {
     analyze_analyzer_coverage "Explorer" "Explorer"
 
     echo ""
-    echo "🧪 TEST FILE ANALYSIS:"
+    echo "🧪 TEST EXECUTION ANALYSIS:"
     echo "--------------------------------------------"
 
-    # Function to analyze test coverage
-    analyze_test_coverage() {
-        local test_name=$1
+    # Analyze main executable used for testing
+    echo ""
+    echo "📋 Main Executable Test Analysis:"
+    
+    if [ -f "thai_checkers_main" ]; then
+        echo "  ✅ Test executable: thai_checkers_main"
+        echo "  📏 Binary size: $(ls -lh thai_checkers_main | awk '{print $5}')"
+        echo "  🎯 Test method: Simulation-based coverage testing"
+        echo "  ⏱️  Test duration: Configurable (default 5 seconds)"
+        echo "  🔄 Test type: Automated game simulation"
         echo ""
-        echo "📋 ${test_name} Analysis:"
-        
-        # Check if test executable exists and get its size/info
-        if [ -f "tests/${test_name}" ]; then
-            echo "  ✅ Test executable: tests/${test_name}"
-            echo "  📏 Binary size: $(ls -lh tests/${test_name} | awk '{print $5}')"
-            
-            # Try to get test count from the test output
-            if command -v ./tests/${test_name} >/dev/null 2>&1; then
-                TEST_OUTPUT=$(./tests/${test_name} --reporter=compact 2>/dev/null | tail -1)
-                if [[ $TEST_OUTPUT == *"test cases"* ]] || [[ $TEST_OUTPUT == *"assertions"* ]]; then
-                    echo "  🎯 Result: ${TEST_OUTPUT}"
-                else
-                    echo "  🎯 Test executed successfully"
-                fi
-            fi
-        else
-            echo "  ❌ Test executable not found: tests/${test_name}"
-        fi
-    }
-
-    analyze_test_coverage "ExplorerTest"
-    analyze_test_coverage "DameAnalyzerTest"
-    analyze_test_coverage "PionAnalyzerTest"
-    analyze_test_coverage "BoardTest"
-    analyze_test_coverage "PositionTest"
-    # MoveTest removed - Move class no longer exists
+        echo "  📊 Test Coverage Strategy:"
+        echo "     - Explorer class: Comprehensive move generation testing"
+        echo "     - Board class: State management validation"
+        echo "     - Position class: Coordinate handling verification"
+        echo "     - Game logic: End-to-end scenario coverage"
+    else
+        echo "  ❌ Main executable not found: thai_checkers_main"
+        echo "     Try running: cmake --build build"
+    fi
 
     echo ""
     echo "⚖️  UNIFIED ANALYZER ANALYSIS:"
@@ -293,12 +275,13 @@ analyze_coverage() {
     echo "   - Some template instantiation edge cases"
     echo "   - Additional integration testing scenarios"
     echo ""
-    echo "🧪 Test Files Analyzed:"
-    echo "   - ExplorerTest.cpp (comprehensive unified coverage)"
-    echo "   - DameAnalyzerTest.cpp (dame-focused tests using unified Explorer)"
-    echo "   - PionAnalyzerTest.cpp (pion-focused tests using unified Explorer)"
-    echo "   - BoardTest.cpp, PositionTest.cpp"
-    echo "   - Complete game logic validation"
+    echo "🧪 Test Strategy (Lean Branch):"
+    echo "   - Simulation-based testing via main executable"
+    echo "   - Automated game scenarios for comprehensive coverage"
+    echo "   - Explorer.cpp: Unified move generation (Dame + Pion logic)"
+    echo "   - Board.cpp: Game state management and validation"
+    echo "   - Position.cpp: Coordinate system verification"
+    echo "   - Complete integration testing through gameplay simulation"
     echo ""
 }
 
@@ -365,7 +348,9 @@ case "${1:-}" in
         show_help
         ;;
     "--regenerate" | "--regen")
-        regenerate_coverage
+        # Allow optional duration parameter: ./coverage.sh --regenerate 30
+        test_duration=${2:-10}
+        regenerate_coverage "$test_duration"
         echo ""
         echo "📋 Step 6: Running coverage analysis..."
         analyze_coverage

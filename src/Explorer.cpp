@@ -10,12 +10,6 @@
 // Static member definition
 constexpr std::array<AnalyzerDirectionDelta, 4> Explorer::dir_deltas;
 
-void Explorer::validate_position(const Board& board, const Position& pos) {
-    if (!board.is_occupied(pos)) [[unlikely]] {
-        throw std::invalid_argument("Position is not occupied");
-    }
-}
-
 const std::vector<AnalyzerDirectionDelta>& Explorer::get_valid_directions(
     const Board& board, const Position& pos) noexcept {
     const bool is_dame = board.is_dame_piece(pos);
@@ -145,6 +139,7 @@ void Explorer::find_capture_sequences_recursive(
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const {
     
     std::vector<AnalyzerCaptureMove> valid_captures;
+    valid_captures.reserve(4);
     const auto& valid_directions = get_valid_directions(board, current_pos);
     const bool is_dame = board.is_dame_piece(current_pos);
     
@@ -174,34 +169,31 @@ void Explorer::find_capture_sequences_recursive(
     
     // Try each valid capture using range-based loop
     for (const auto& [captured_piece, landing_position] : valid_captures) {
-        // Create new state for this capture using more modern initialization
-        auto new_board = Board::copy(board);
-    auto new_mask = captured_mask;
+        // Mutate/undo model on a copied board (we still copy once per level due to value param).
+        Board new_board = board; // one copy per branch (cheap with bitboards)
+        auto new_mask = captured_mask;
         auto new_sequence = current_sequence;
-        
-        // Apply the capture
+
+        // Apply capture
         new_board.remove_piece(captured_piece);
         new_board.move_piece(current_pos, landing_position);
-    // Update mask (position hash/index guaranteed < 32 on 8x8 half squares)
-    new_mask |= (1ull << captured_piece.hash());
-        
-        // Add captured position and landing position to sequence
+        new_mask |= (1ull << captured_piece.hash());
+
+        // Sequence bookkeeping
         new_sequence.emplace_back(captured_piece);
         new_sequence.emplace_back(landing_position);
-        
-        // Recursively find more captures from the landing position
-        find_capture_sequences_recursive(
-            std::move(new_board), landing_position,
-            new_mask, std::move(new_sequence), unique_sequences);
+
+        // Recurse
+        find_capture_sequences_recursive(std::move(new_board), landing_position,
+                                         new_mask, std::move(new_sequence), unique_sequences);
     }
 }
 
 Options Explorer::find_valid_moves(const Position& from) const {
-    validate_position(board, from);
-    
     // Check for captures first - they are mandatory in Thai Checkers.
     // We'll build a map keyed by (captured set, final position) to avoid storing equivalent sequences multiple times.
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash> unique_sequences;
+    unique_sequences.reserve(64);
     const CaptureSequence empty_sequence;
     find_capture_sequences_recursive(board, from, 0ull, empty_sequence, unique_sequences);
 
@@ -222,8 +214,6 @@ Options Explorer::find_valid_moves(const Position& from) const {
 // Removed deduplicate_equivalent_sequences: logic integrated into recursion
 
 Positions Explorer::find_regular_moves(const Position& from) const {
-    validate_position(board, from);
-
     const auto& valid_directions = get_valid_directions(board, from);
     const bool is_dame = board.is_dame_piece(from);
     

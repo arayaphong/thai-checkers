@@ -1,106 +1,164 @@
-#include "Game.h"
-#include "main.h"
-#include <iostream>
-#include <Options.h>
-#include <random>
 #include <chrono>
+#include <cassert>
+#include <cstring>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <vector>
 #include <sys/resource.h>
 #include <unistd.h>
-#include <fstream>
 
-namespace {
-struct usage_snapshot {
-    double user_seconds{0.0};
-    double system_seconds{0.0};
-    long max_rss_kb{0};
-    size_t current_rss_kb{0};
-};
+#include "Game.h"
 
-usage_snapshot capture_usage() {
-    usage_snapshot snap;
-    rusage ru{};
-    if (getrusage(RUSAGE_SELF, &ru) == 0) {
-        snap.user_seconds = static_cast<double>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1'000'000.0;
-        snap.system_seconds = static_cast<double>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1'000'000.0;
-        // On Linux ru_maxrss is in kilobytes
-        snap.max_rss_kb = ru.ru_maxrss;
+namespace
+{
+    struct usage_snapshot
+    {
+        double user_seconds{0.0};
+        double system_seconds{0.0};
+        long max_rss_kb{0};
+        size_t current_rss_kb{0};
+    };
+
+    // Global flag to control verbosity for tests/benchmarks
+    bool g_quiet = false;
+
+    usage_snapshot capture_usage()
+    {
+        usage_snapshot snap;
+        rusage ru{};
+        if (getrusage(RUSAGE_SELF, &ru) == 0)
+        {
+            snap.user_seconds = static_cast<double>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1'000'000.0;
+            snap.system_seconds = static_cast<double>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1'000'000.0;
+            // On Linux ru_maxrss is in kilobytes
+            snap.max_rss_kb = ru.ru_maxrss;
+        }
+        // Get current resident set size (in KB)
+        std::ifstream statm("/proc/self/statm");
+        if (statm)
+        {
+            size_t size_pages = 0, resident_pages = 0;
+            statm >> size_pages >> resident_pages; // we only need the first two
+            long page_kb = sysconf(_SC_PAGESIZE) / 1024;
+            snap.current_rss_kb = resident_pages * static_cast<size_t>(page_kb);
+        }
+        return snap;
     }
-    // Get current resident set size (in KB)
-    std::ifstream statm("/proc/self/statm");
-    if (statm) {
-        size_t size_pages = 0, resident_pages = 0;
-        statm >> size_pages >> resident_pages; // we only need the first two
-        long page_kb = sysconf(_SC_PAGESIZE) / 1024;
-        snap.current_rss_kb = resident_pages * static_cast<size_t>(page_kb);
-    }
-    return snap;
-}
 } // namespace
 
-void print_choices(const std::vector<Move>& choices) {
-    for (const auto& m : choices) {
-        std::cout << "From: " << m.from.to_string() << " To: " << m.to.to_string();
-        if (!m.captured.empty()) {
-            std::cout << " (Captures: ";
-            for (std::size_t i = 0; i < m.captured.size(); ++i) {
-                std::cout << m.captured[i].to_string();
-                if (i + 1 < m.captured.size()) std::cout << ", ";
-            }
-            std::cout << ")";
-        }
-        std::cout << '\n';
-    }
+// Global RNG with optional seeding for reproducibility
+namespace
+{
+    std::mt19937 g_rng{std::random_device{}()};
 }
 
 void random_game_play()
 {
     Game game;
     int state = 0;
-    
-    while (true) {
-        const auto& current_player = (state % 2 == 0) ? "White" : "Black";
-        std::cout << "[State " << state << "] " << current_player << " Turn:" << std::endl;
-        game.print_board();
-        std::cout << std::endl;
 
-        const auto& choices = game.get_choices();
-        if (choices.empty()) {
+    while (true)
+    {
+        const char *current_player = (state % 2 == 0) ? "White" : "Black";
+        if (!g_quiet)
+        {
+            std::cout << "[State " << state << "] " << current_player << " Turn:" << std::endl;
+            game.print_board();
+            std::cout << std::endl;
+        }
+
+        const std::size_t choices = game.move_count();
+        if (choices == 0)
+        {
             std::cout << "No more moves available. Game over!" << std::endl;
-            std::string winner = (state % 2 == 0) ? "Black" : "White";
+            const char *winner = (state % 2 == 0) ? "Black" : "White";
             std::cout << "Victory: " << winner << " wins!" << std::endl;
             break;
         }
 
-        print_choices(choices);
-        std::cout << std::endl;
+        game.print_choices();
 
-        // Randomly select an available move for demonstration
-        static std::mt19937 rng(std::random_device{}());               // good-quality PRNG, seeded once
-        std::uniform_int_distribution<std::size_t> dist(0, choices.size() - 1);
-        const auto& move = choices[dist(rng)];
-        std::cout << "Selected move: " << move.from.to_string() << " -> " << move.to.to_string() << std::endl;
-        game.execute_move(move);
-        
+        // Randomly select an available move for demonstration (seedable via --seed)
+        std::uniform_int_distribution<std::size_t> dist(0, choices - 1);
+        game.select_move(dist(g_rng));
+
         ++state;
+    }
+
+    const auto &move_sequence = game.get_move_sequence();
+    std::cout << "Move history: ";
+    for (std::size_t i = 1; i < move_sequence.size(); i += 2)
+    {
+        std::cout << move_sequence[i] << " ";
+    }
+    std::cout << std::endl;
+}
+
+void random_game_play_quiet()
+{
+    Game game;
+    while (true)
+    {
+        const std::size_t move_count = game.move_count();
+        if (move_count == 0)
+        {
+            break;
+        }
+
+        std::uniform_int_distribution<std::size_t> dist(0, move_count - 1);
+        game.select_move(dist(g_rng));
     }
 }
 
-int main() {
-    using namespace std::chrono;
-    constexpr auto test_duration = seconds{10};
-    const auto wall_start = steady_clock::now();
+int smoke_test(int argc, char **argv)
+{
+    std::chrono::seconds test_duration{10};
+    // Very small, simple CLI: --seconds N, -s N, --quiet
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::strcmp(argv[i], "--quiet") == 0 || std::strcmp(argv[i], "-q") == 0)
+        {
+            g_quiet = true;
+        }
+        else if ((std::strcmp(argv[i], "--seconds") == 0 || std::strcmp(argv[i], "-s") == 0) && i + 1 < argc)
+        {
+            const int n = std::atoi(argv[++i]);
+            if (n > 0)
+                test_duration = std::chrono::seconds{n};
+        }
+        else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
+        {
+            const unsigned long long seed = std::strtoull(argv[++i], nullptr, 10);
+            g_rng.seed(static_cast<std::mt19937::result_type>(seed));
+        }
+    }
+    const auto wall_start = std::chrono::steady_clock::now();
     const auto usage_start = capture_usage();
     std::size_t games_played = 0;
 
-    while (steady_clock::now() - wall_start < test_duration) {
-        random_game_play();
-        ++games_played;
+    if (g_quiet)
+    {
+        while (std::chrono::steady_clock::now() - wall_start < test_duration)
+        {
+            random_game_play_quiet();
+            ++games_played;
+        }
+    }
+    else
+    {
+        while (std::chrono::steady_clock::now() - wall_start < test_duration)
+        {
+            random_game_play();
+            ++games_played;
+        }
     }
 
-    const auto wall_end = steady_clock::now();
+    const auto wall_end = std::chrono::steady_clock::now();
     const auto usage_end = capture_usage();
 
-    const auto wall_seconds = duration<double>(wall_end - wall_start).count();
+    const auto wall_seconds = std::chrono::duration<double>(wall_end - wall_start).count();
     const double cpu_user = usage_end.user_seconds - usage_start.user_seconds;
     const double cpu_system = usage_end.system_seconds - usage_start.system_seconds;
     const double cpu_total = cpu_user + cpu_system;
@@ -118,7 +176,15 @@ int main() {
     std::cout << "Current RSS         : " << usage_end.current_rss_kb << " KB\n";
     std::cout << "Max RSS (ru_maxrss) : " << usage_end.max_rss_kb << " KB\n";
     std::cout << "===========================\n";
-    std::cout << "Note: Extensive per-move printing will heavily reduce games/second.\n";
+    if (!g_quiet)
+    {
+        std::cout << "Note: Extensive per-move printing will heavily reduce games/second.\n";
+    }
 
     return 0;
+}
+ 
+int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
+{
+    return smoke_test(argc, argv);
 }

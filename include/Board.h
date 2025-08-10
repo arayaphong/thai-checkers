@@ -44,22 +44,26 @@ struct AnalyzerCaptureMove {
 
 class Board {
 private:
-    static constexpr std::size_t PIECES_RESERVE_SIZE = 16;
+    static constexpr std::size_t PIECES_RESERVE_SIZE = 32;
+    // 32 playable squares on an 8x8 board (only dark squares)
+    // Bit i corresponds to Position::from_index(i)
+    std::uint32_t occ_bits_{};   // occupied squares mask
+    std::uint32_t black_bits_{}; // 1 => black piece at that index
+    std::uint32_t dame_bits_{};  // 1 => dame at that index
 
 public:
-    Board() { pieces_.reserve(PIECES_RESERVE_SIZE); }
+    Board() = default;
     ~Board() = default;
     Board(const Board&) = default;
     Board(Board&&) noexcept = default;
-    explicit Board(const Pieces& pieces) : pieces_(pieces) { pieces_.reserve(PIECES_RESERVE_SIZE); }
-    explicit Board(Pieces&& pieces) noexcept : pieces_(std::move(pieces)) { pieces_.reserve(PIECES_RESERVE_SIZE); }
+    explicit Board(const Pieces& pieces) { *this = from_pieces(pieces); }
+    explicit Board(Pieces&& pieces) noexcept { *this = from_pieces(pieces); }
 
     [[nodiscard]] static Board setup() noexcept;
     
     [[nodiscard]] static constexpr bool is_valid_position(const Position& pos) noexcept {
         return Position::is_valid(pos.x(), pos.y()) && ((pos.x() + pos.y()) % 2 != 0);
     }
-    [[nodiscard]] static Board from_hash(std::size_t hash_value);
     [[nodiscard]] static Board copy(const Board& other) { return Board{other}; }
 
     [[nodiscard]] std::size_t hash() const noexcept;
@@ -70,36 +74,32 @@ public:
     [[nodiscard]] bool operator==(const Board& other) const noexcept = default;
 
     [[nodiscard]] bool is_occupied(const Position& pos) const noexcept;
-    [[nodiscard]] bool is_black_piece(const Position& pos) const;
-    [[nodiscard]] bool is_dame_piece(const Position& pos) const;
-    
-    // More efficient non-throwing variants that return optional results
-    [[nodiscard]] std::optional<PieceColor> get_piece_color(const Position& pos) const noexcept;
-    [[nodiscard]] std::optional<PieceType> get_piece_type(const Position& pos) const noexcept;
-    [[nodiscard]] std::optional<PieceInfo> get_piece_info(const Position& pos) const noexcept;
+    [[nodiscard]] bool is_black_piece(const Position& pos) const noexcept;
+    [[nodiscard]] bool is_dame_piece(const Position& pos) const noexcept;
     
     // Pass Position by const reference to avoid copying
-    void promote_piece(const Position& pos);
-    void move_piece(const Position& from, const Position& to);
+    void promote_piece(const Position& pos) noexcept;
+    void move_piece(const Position& from, const Position& to) noexcept;
     void remove_piece(const Position& pos) noexcept;
-    
-    [[nodiscard]] int get_piece_count(PieceColor color) const noexcept;
-    [[nodiscard]] int get_piece_count() const noexcept;
 
-    // Return const reference to avoid copying the container
-    [[nodiscard]] const Pieces& get_pieces() const noexcept { return pieces_; }
     [[nodiscard]] Pieces get_pieces(PieceColor color) const noexcept;
 
-    // Resets the board to the initial state
-    void reset() noexcept;
-
-    // Modern C++20 range access
-    [[nodiscard]] auto pieces_view() const noexcept -> const Pieces& { return pieces_; }
-    [[nodiscard]] auto begin() const noexcept { return pieces_.begin(); }
-    [[nodiscard]] auto end() const noexcept { return pieces_.end(); }
-
 private:
-    Pieces pieces_;
+    // Internal helpers
+    [[nodiscard]] static constexpr std::uint32_t bit(std::size_t idx) noexcept {
+        return static_cast<std::uint32_t>(1u) << static_cast<unsigned>(idx);
+    }
+    [[nodiscard]] static Board from_pieces(const Pieces& pieces) noexcept {
+        Board b;
+        for (const auto& [pos, info] : pieces) {
+            const auto i = pos.hash();
+            const auto m = bit(i);
+            b.occ_bits_ |= m;
+            if (info.color == PieceColor::BLACK) b.black_bits_ |= m; else b.black_bits_ &= ~m;
+            if (info.type == PieceType::DAME)  b.dame_bits_  |= m; else b.dame_bits_  &= ~m;
+        }
+        return b;
+    }
 };
 
 // C++20 improved std::hash specialization

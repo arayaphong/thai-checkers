@@ -35,3 +35,7 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Profiling and debugging
+thai_checkers_optimized
+build_gprof/
+build_ninja/
