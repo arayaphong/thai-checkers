@@ -5,7 +5,11 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include <vector>
+#include <cstdint>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -51,7 +55,30 @@ namespace
 // Global RNG with optional seeding for reproducibility
 namespace
 {
-    std::mt19937 g_rng{std::random_device{}()};
+    // Thread-local RNG to be safe under OpenMP parallel regions
+    thread_local std::mt19937 g_rng{std::random_device{}()};
+    // Global seed value set via CLI (0 means no override)
+    std::uint32_t g_seed_value = 0;
+    bool g_has_seed = false;
+
+    inline void set_global_seed(std::uint32_t seed)
+    {
+        g_seed_value = seed;
+        g_has_seed = true;
+        // Also seed current thread's RNG for single-threaded runs
+        g_rng.seed(seed);
+    }
+
+    inline void seed_thread_rng_with_tid(int tid)
+    {
+        if (g_has_seed)
+        {
+            // Mix in thread id using golden ratio constant for decorrelation
+            const std::uint32_t mixed = g_seed_value ^ (0x9E3779B9u * static_cast<std::uint32_t>(tid + 1));
+            g_rng.seed(mixed);
+        }
+        // else keep random_device-based default seeding
+    }
 }
 
 void random_game_play()
@@ -131,7 +158,7 @@ int smoke_test(int argc, char **argv)
         else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
         {
             const unsigned long long seed = std::strtoull(argv[++i], nullptr, 10);
-            g_rng.seed(static_cast<std::mt19937::result_type>(seed));
+            set_global_seed(static_cast<std::uint32_t>(seed));
         }
     }
     const auto wall_start = std::chrono::steady_clock::now();
@@ -140,14 +167,35 @@ int smoke_test(int argc, char **argv)
 
     if (g_quiet)
     {
+#ifdef _OPENMP
+        // Parallelize quiet mode where no printing occurs.
+        const auto start_time = wall_start;
+        const auto duration = test_duration;
+        std::size_t total_games = 0;
+#pragma omp parallel
+        {
+            seed_thread_rng_with_tid(omp_get_thread_num());
+            std::size_t local_count = 0;
+            while (std::chrono::steady_clock::now() - start_time < duration)
+            {
+                random_game_play_quiet();
+                ++local_count;
+            }
+#pragma omp atomic update
+            total_games += local_count;
+        }
+        games_played = total_games;
+#else
         while (std::chrono::steady_clock::now() - wall_start < test_duration)
         {
             random_game_play_quiet();
             ++games_played;
         }
+#endif
     }
     else
     {
+        // Keep verbose mode single-threaded to avoid interleaved output
         while (std::chrono::steady_clock::now() - wall_start < test_duration)
         {
             random_game_play();
@@ -183,7 +231,9 @@ int smoke_test(int argc, char **argv)
 
     return 0;
 }
- 
+
+
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 {
     return smoke_test(argc, argv);

@@ -18,6 +18,11 @@ BIN_PATH="$BUILD_DIR/$APP_NAME"
 ROOT_SYMLINK="thai_checkers_optimized"
 SCRIPT_NO_QUIET=false
 SCRIPT_PROFILER="auto" # auto|perf|callgrind|gprof
+# Optimization toggles (mapped to CMake)
+SCRIPT_ARCH="native"   # native|znver2|znver3|znver4
+SCRIPT_LTO="ON"        # ON|OFF
+SCRIPT_AGGRESSIVE=false # add -ffast-math/-funroll-loops/-finline-functions
+SCRIPT_THREADS=""      # OMP_NUM_THREADS value when running
 
 print_usage() {
   cat <<EOF
@@ -30,6 +35,10 @@ Usage:
 Options:
   --profiler <perf|callgrind|gprof>   Force a specific profiler (default: auto)
   --no-quiet                          Do not inject --quiet into app args during profiling
+  --arch <native|znver2|znver3|znver4>  CPU tuning target (default: native)
+  --lto <on|off>                       Enable Link Time Optimization (default: on)
+  --aggressive                         Add extra opts: -ffast-math -funroll-loops -finline-functions
+  --threads <N>                        Set OMP_NUM_THREADS when running
 
 Examples:
   $0 --run -- --quiet -s 10                 # run for 10s silently
@@ -62,26 +71,47 @@ build_optimized() {
 
   echo -e "${YELLOW}Configuring CMake with ${for_profile:+profiling-friendly }optimization...${NC}"
 
-  # Common flags
-  local CXX_OPT_FLAGS="-O3 -DNDEBUG -march=native -mtune=native -flto -ffast-math -funroll-loops -finline-functions -DNDEBUG"
-  local LDFLAGS="-flto"
+  # Map script options to CMake cache args
+  local CMAKE_ARGS=(
+    -S .
+    -B "$BUILD_DIR"
+    -DCMAKE_BUILD_TYPE=Release
+  )
 
-  if [[ "$for_profile" == true ]]; then
-    # Better call stacks and symbols for profiler; avoid stripping
-    CXX_OPT_FLAGS+=" -g -fno-omit-frame-pointer"
-    # keep LDFLAGS as-is (no -s)
+  # LTO toggle
+  if [[ "${SCRIPT_LTO^^}" == "ON" ]]; then
+    CMAKE_ARGS+=( -DENABLE_LTO=ON )
   else
-    # Match previous behavior: omit frame pointer and strip binary
-    CXX_OPT_FLAGS+=" -fomit-frame-pointer"
-    LDFLAGS+=" -s"
+    CMAKE_ARGS+=( -DENABLE_LTO=OFF )
   fi
 
-  cmake -S . \
-    -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_FLAGS_RELEASE="$CXX_OPT_FLAGS" \
-    -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" \
-    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+  # Architecture selection: prefer explicit znverX over native
+  if [[ "$SCRIPT_ARCH" == "native" ]]; then
+    CMAKE_ARGS+=( -DENABLE_NATIVE_OPTIMIZATIONS=ON )
+  else
+    CMAKE_ARGS+=( -DAMD_ZEN_ARCH="$SCRIPT_ARCH" )
+  fi
+
+  # Compose additional release flags
+  local BASE_RELEASE_FLAGS="-O3 -DNDEBUG"
+  local EXTRA_FLAGS=""
+  if [[ "$SCRIPT_AGGRESSIVE" == true ]]; then
+    EXTRA_FLAGS+=" -ffast-math -funroll-loops -finline-functions"
+  fi
+  if [[ "$for_profile" == true ]]; then
+    EXTRA_FLAGS+=" -g -fno-omit-frame-pointer"
+  else
+    EXTRA_FLAGS+=" -fomit-frame-pointer"
+  fi
+  CMAKE_ARGS+=( -DCMAKE_CXX_FLAGS_RELEASE="$BASE_RELEASE_FLAGS $EXTRA_FLAGS" )
+  # Strip binary in non-profile builds
+  if [[ "$for_profile" == true ]]; then
+    CMAKE_ARGS+=( -DCMAKE_EXE_LINKER_FLAGS="" )
+  else
+    CMAKE_ARGS+=( -DCMAKE_EXE_LINKER_FLAGS="-s" )
+  fi
+
+  cmake "${CMAKE_ARGS[@]}"
 
   echo -e "${YELLOW}Building optimized main application...${NC}"
   cmake --build "$BUILD_DIR" --config Release --target "$APP_NAME" -j"$(command -v nproc >/dev/null 2>&1 && nproc || echo 4)"
@@ -91,17 +121,22 @@ build_optimized() {
     echo -e "${BLUE}Executable location: $(realpath "$BIN_PATH")${NC}"
 
     echo -e "\n${BLUE}Optimization Details:${NC}"
-    echo "- March: native (optimized for current CPU)"
-    echo "- Mtune: native (tuned for current CPU)"
-    echo "- LTO: enabled (Link Time Optimization)"
-    echo "- Fast math: enabled"
-    echo "- Loop unrolling: enabled"
+    if [[ "$SCRIPT_ARCH" == "native" ]]; then
+      echo "- Arch: native"
+    else
+      echo "- Arch: $SCRIPT_ARCH"
+    fi
+    echo "- LTO: ${SCRIPT_LTO^^}"
+    if [[ "$SCRIPT_AGGRESSIVE" == true ]]; then
+      echo "- Extras: -ffast-math -funroll-loops -finline-functions"
+    else
+      echo "- Extras: (none)"
+    fi
     if [[ "$for_profile" == true ]]; then
       echo "- Frame pointer: kept (profiling-friendly)"
       echo "- Debug symbols: enabled"
       echo "- Binary stripped: no"
     else
-      echo "- Inlining: aggressive"
       echo "- Frame pointer: omitted"
       echo "- Binary stripped: yes"
     fi
@@ -137,10 +172,14 @@ run_optimized() {
 
   echo -e "${GREEN}Running Thai Checkers 2 (Optimized)...${NC}"
   echo "========================================"
+  local RUN_ENV=()
+  if [[ -n "$SCRIPT_THREADS" ]]; then
+    RUN_ENV+=( OMP_NUM_THREADS="$SCRIPT_THREADS" )
+  fi
   if command -v stdbuf >/dev/null 2>&1; then
-    stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
+    "${RUN_ENV[@]}" stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
   else
-    "./$ROOT_SYMLINK" "${ARGS[@]}"
+    "${RUN_ENV[@]}" "./$ROOT_SYMLINK" "${ARGS[@]}"
   fi
 }
 
@@ -220,7 +259,7 @@ profile_optimized() {
       echo -e "Hint: try 'sudo sysctl kernel.perf_event_paranoid=1' and 'sudo sysctl kernel.kptr_restrict=0' if recording fails."
     fi
     local PERF_OUT="$BUILD_DIR/perf.data"
-    if "$PERF_BIN" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
+  if OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$PERF_BIN" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
       echo -e "${GREEN}✓ perf record complete. Generating report (top ~60 lines)...${NC}"
       "$PERF_BIN" report --stdio -i "$PERF_OUT" | head -n 60 || true
       echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
@@ -228,12 +267,12 @@ profile_optimized() {
     else
       echo -e "${RED}perf failed or is not compatible with the current kernel/tools.${NC}"
       # If we used the wrapper, try a discovered versioned perf once as a second chance
-      if [[ "$PERF_BIN" == "/usr/bin/perf" && -d "$PERF_SCAN_DIR" ]]; then
+  if [[ "$PERF_BIN" == "/usr/bin/perf" && -d "$PERF_SCAN_DIR" ]]; then
         local ALT_PERF
         ALT_PERF=$(find "$PERF_SCAN_DIR" -maxdepth 2 -type f -name perf 2>/dev/null | sort -V | tail -n 1 || true)
         if [[ -n "$ALT_PERF" && "$ALT_PERF" != "$PERF_BIN" ]]; then
           echo -e "${YELLOW}Retrying with discovered perf binary: ${BLUE}$ALT_PERF${NC}"
-          if "$ALT_PERF" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
+          if OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$ALT_PERF" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
             echo -e "${GREEN}✓ perf record complete (alt). Generating report (top ~60 lines)...${NC}"
             "$ALT_PERF" report --stdio -i "$PERF_OUT" | head -n 60 || true
             echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
@@ -248,7 +287,7 @@ profile_optimized() {
   if [[ "$SCRIPT_PROFILER" != "gprof" ]] && command -v valgrind >/dev/null 2>&1 && command -v callgrind_annotate >/dev/null 2>&1; then
     echo -e "${YELLOW}Using Valgrind Callgrind for profiling.${NC}"
     local CG_OUT="$BUILD_DIR/callgrind.out"
-    valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
+  OMP_NUM_THREADS="${SCRIPT_THREADS:-}" valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
     echo -e "${GREEN}✓ Callgrind run complete. Annotated summary (top ~60 lines)...${NC}"
     callgrind_annotate "$CG_OUT" | head -n 60 || true
     echo -e "${BLUE}Callgrind output at: $CG_OUT${NC}"
@@ -277,7 +316,7 @@ profile_optimized() {
         echo -e "${GREEN}✓ Build complete. Running to generate gmon.out...${NC}"
         (
           cd "$GPROF_BUILD_DIR" && \
-          stdbuf -oL -eL "./$APP_NAME" "${RUN_ARGS[@]}" || true
+          stdbuf -oL -eL OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "./$APP_NAME" "${RUN_ARGS[@]}" || true
         )
         if [[ -f "$GPROF_BUILD_DIR/gmon.out" ]]; then
           echo -e "${GREEN}✓ Profiling data generated. Printing gprof summary (top ~100 lines)...${NC}"
@@ -336,6 +375,30 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_PROFILER="gprof"; shift ;;
     --no-quiet)
       SCRIPT_NO_QUIET=true; shift ;;
+    --arch)
+      SCRIPT_ARCH="$2"; shift 2 ;;
+    --arch=*)
+      SCRIPT_ARCH="${1#*=}"; shift ;;
+    --lto)
+      case "${2^^}" in
+        ON|OFF) SCRIPT_LTO="${2^^}";;
+        on|off) SCRIPT_LTO="${2^^}";;
+        *) echo -e "${RED}Invalid --lto value: $2 (use on|off)${NC}"; exit 1;;
+      esac
+      shift 2 ;;
+    --lto=*)
+      case "${1#*=}" in
+        on|ON) SCRIPT_LTO=ON;;
+        off|OFF) SCRIPT_LTO=OFF;;
+        *) echo -e "${RED}Invalid --lto value: ${1#*=} (use on|off)${NC}"; exit 1;;
+      esac
+      shift ;;
+    --aggressive)
+      SCRIPT_AGGRESSIVE=true; shift ;;
+    --threads)
+      SCRIPT_THREADS="$2"; shift 2 ;;
+    --threads=*)
+      SCRIPT_THREADS="${1#*=}"; shift ;;
     -h|--help)
       print_usage; exit 0 ;;
     --)
