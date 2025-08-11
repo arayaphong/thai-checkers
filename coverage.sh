@@ -74,7 +74,7 @@ regenerate_coverage() {
     if [ -s coverage/coverage.info ]; then
         echo "  → Extracting only project source files..."
         lcov --extract coverage/coverage.info "$PROJECT_ROOT/*" --ignore-errors unused --output-file coverage/coverage_cleaned.info || echo "    ⚠️  Filtering had issues"
-        
+
         echo "  → Generating HTML report..."
         mkdir -p coverage/html
         genhtml coverage/coverage_cleaned.info --output-directory coverage/html --title "Thai Checkers Coverage Report" --dark-mode --quiet || echo "    ⚠️  HTML generation had issues"
@@ -151,37 +151,37 @@ analyze_coverage() {
     analyze_analyzer_coverage() {
         local analyzer_name=$1
         local gcov_pattern=$2
-        
+
         echo ""
         echo "📊 ${analyzer_name} COVERAGE:"
         echo "--------------------------------------------"
-        
+
         # Generate gcov files if they don't exist
         if [ ! -f "CMakeFiles/thai_checkers_lib.dir/src/${gcov_pattern}.cpp.gcov" ]; then
             echo "  → Generating gcov files..."
             cd CMakeFiles/thai_checkers_lib.dir/src && gcov *.gcda >/dev/null 2>&1 && cd ../../..
         fi
-        
+
         # Find the analyzer gcov file in the CMake build directory
         GCOV_FILE="CMakeFiles/thai_checkers_lib.dir/src/${gcov_pattern}.cpp.gcov"
 
         if [ -f "$GCOV_FILE" ]; then
             echo "✅ Found coverage data for ${analyzer_name}.cpp"
-            
+
             # Count total lines, executed lines, and unexecuted lines
             TOTAL_LINES=$(grep -c "^[[:space:]]*[0-9#-].*:" "$GCOV_FILE" 2>/dev/null || echo "0")
             EXECUTED_LINES=$(grep -c "^[[:space:]]*[0-9].*:" "$GCOV_FILE" 2>/dev/null || echo "0")
             UNEXECUTED_LINES=$(grep -c "^[[:space:]]*#####.*:" "$GCOV_FILE" 2>/dev/null || echo "0")
-            
+
             echo "  Total executable lines: $TOTAL_LINES"
             echo "  Executed lines: $EXECUTED_LINES"
             echo "  Unexecuted lines: $UNEXECUTED_LINES"
-            
+
             if [ "$TOTAL_LINES" -gt 0 ] 2>/dev/null; then
                 COVERAGE_PERCENT=$(echo "scale=1; $EXECUTED_LINES * 100 / $TOTAL_LINES" | bc -l 2>/dev/null || echo "0.0")
                 echo "  Coverage percentage: ${COVERAGE_PERCENT}%"
             fi
-            
+
             echo ""
             echo "🚨 UNEXECUTED LINES (${analyzer_name}):"
             echo "--------------------------------------------"
@@ -190,7 +190,7 @@ analyze_coverage() {
                 code=$(echo "$line" | cut -d: -f2-)
                 echo "  Line $line_num: $code"
             done
-            
+
             echo ""
             echo "✅ WELL COVERED FUNCTIONS (${analyzer_name}):"
             echo "--------------------------------------------"
@@ -212,7 +212,7 @@ analyze_coverage() {
     # Analyze main executable used for testing
     echo ""
     echo "📋 Main Executable Test Analysis:"
-    
+
     if [ -f "thai_checkers_main" ]; then
         echo "  ✅ Test executable: thai_checkers_main"
         echo "  📏 Binary size: $(ls -lh thai_checkers_main | awk '{print $5}')"

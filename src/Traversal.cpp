@@ -187,7 +187,7 @@ long Traversal::proc_status_kb(const char* key) {
 }
 
 double Traversal::process_cpu_seconds() {
-    struct rusage ru {};
+    struct rusage ru{};
     if (getrusage(RUSAGE_SELF, &ru) != 0) return -1.0;
     const double user = ru.ru_utime.tv_sec + ru.ru_utime.tv_usec / 1e6;
     const double sys = ru.ru_stime.tv_sec + ru.ru_stime.tv_usec / 1e6;

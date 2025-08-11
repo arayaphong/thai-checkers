@@ -1,9 +1,43 @@
 repos:
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v18.1.3
+    rev: v20.1.8
     hooks:
       - id: clang-format
         name: clang-format (C++ only)
         files: \.(h|hpp|cpp)$
         types_or: [c, c++]
         additional_dependencies: []
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=auto]
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+  # Use a local clang-tidy hook since the mirrors-clang-tidy repo is no longer available
+  - repo: local
+    hooks:
+      - id: clang-tidy
+        name: clang-tidy (system)
+        language: system
+        entry: bash
+        args:
+          - -lc
+          - >
+            set -euo pipefail;
+            bin="";
+            for c in clang-tidy clang-tidy-20 clang-tidy-19 clang-tidy-18 clang-tidy-17; do
+              if command -v "$c" >/dev/null 2>&1; then bin="$c"; break; fi;
+            done;
+            if [[ -z "$bin" ]]; then echo "clang-tidy not found (tried: clang-tidy, -20, -19, -18, -17)" >&2; exit 127; fi;
+            if [[ ! -f build/compile_commands.json ]]; then
+              cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON;
+            fi;
+            "$bin" -p build "$@"
+        stages: [manual]
+        files: '\\.(c|cc|cpp|cxx)$'
+        types_or: [c, c++]
