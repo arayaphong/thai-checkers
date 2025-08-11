@@ -1,56 +1,65 @@
 #pragma once
 
-#include <atomic>
-#include <chrono>
-#include <cstdint>
-#include <string>
-#include <vector>
-
-class Game;
+#include <iostream>
+#include <cstddef>
+#include "Game.h"
 
 class Traversal {
 public:
-    struct Options {
-        int split_depth = 5;                       // depth to split the tree into a frontier
-        std::uint64_t start_offset = 0;            // number of frontier seeds to skip (resume cursor)
-        std::uint64_t max_frontier = 0;            // 0 = process all remaining frontier seeds
-        std::string seed_token;                    // Alternate encoding of resume cursor: "D:OFFSET"
-        bool verbose = false;                      // print progress
-        int max_depth = 200;                       // safety cap for DFS to prevent cycles/infinite games
-        std::chrono::milliseconds time_limit{0};   // 0 = no time limit
-        std::uint64_t node_limit = 0;              // 0 = unlimited nodes
-        std::uint64_t leaf_limit = 0;              // 0 = unlimited leaves
-    };
+    Traversal() {}
 
-    struct Result {
-        std::uint64_t total_frontier = 0;          // total frontier size at split_depth (for reference)
-        std::uint64_t processed_seeds = 0;         // how many frontier seeds processed in this run
-        std::uint64_t next_offset = 0;             // cursor to resume from next time
-        std::uint64_t nodes_visited = 0;           // internal nodes expanded in post-frontier DFS
-        std::uint64_t terminal_positions = 0;      // number of terminal leaves reached (complete games)
-        int max_depth_reached = 0;                 // maximum depth from root reached during this run
-        std::string resume_token;                  // formatted as "D:OFFSET"
-    };
+    void print_selection_history(const Game& game) const {
+        std::cout << "Selection History:" << std::endl;
+        const auto& history = game.get_move_sequence();
+        for (std::size_t i = 1; i < history.size(); i+=2) {
+            std::cout << history[i] << ".";
+        }
+        std::cout << std::endl;
+    }
 
-    static Result run(const Options& opts);
+    void traverse(std::size_t move_index, int turn_count = 1, Game game = Game()) {
+        if (looping_database.contains(game.board().hash())) {
+            return; // Avoid cycles
+        }
+
+        // Debug output
+        std::cout << std::endl;
+        const std::string& player = game.player() == PieceColor::BLACK ? "Black" : "White";
+        std::cout << "[" << game_count << ":" << turn_count << "] " << player << std::endl;
+        game.print_board();
+        game.print_choices();
+        ++turn_count;
+        // std::cin.ignore();
+
+        game.select_move(move_index);
+
+        const auto& move_count = game.move_count();
+        if (move_count == 0) {
+            std::cout << std::endl;
+            const std::string& player = game.player() == PieceColor::BLACK ? "Black" : "White";
+            std::cout << "[" << game_count << ":" << turn_count << "] " << player << std::endl;
+            game.print_board();
+            const auto& history = game.get_move_sequence();
+            const auto& move_history_count = history.size() / 2;
+            const auto& is_looping = game.is_looping();
+            if (is_looping) {
+                looping_database.insert(game.board().hash());
+                std::cout << move_history_count << " Moves ended in a loop!" << std::endl;
+            } else {
+                const auto& winner = (game.player() == PieceColor::BLACK ? "White" : "Black");
+                std::cout << move_history_count << " Moves ended with a " << winner << " win!" << std::endl;
+            }
+            ++game_count;
+            return;
+        }
+
+        for (std::size_t i = 0; i < move_count; ++i) {
+            const auto& next_game = Game::copy(game);
+            traverse(i, turn_count, next_game);
+        }
+    }
 
 private:
-    static void apply_seed_token(const std::string &token, int &split_depth, std::uint64_t &start_offset);
-    static bool replay_path(Game &g, const std::vector<std::size_t> &path, int &max_depth_reached);
-    static void enumerate_frontier(const Game &base,
-                                   int split_depth,
-                                   std::uint64_t skip,
-                                   std::uint64_t limit,
-                                   std::vector<std::vector<std::size_t>> &out,
-                                   std::uint64_t &total_frontier_count);
-    static void dfs_to_terminal(Game &g,
-                                std::uint64_t &nodes,
-                                std::uint64_t &leaves,
-                                int current_depth,
-                                int &max_depth_reached,
-                                int max_depth_limit,
-                                const std::chrono::steady_clock::time_point *deadline,
-                                std::atomic<bool> *stop,
-                                const std::uint64_t node_cap,
-                                const std::uint64_t leaf_cap);
+    std::size_t game_count = 1;
+    std::unordered_set<std::size_t> looping_database;
 };

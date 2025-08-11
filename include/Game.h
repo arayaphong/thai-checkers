@@ -39,6 +39,18 @@ class Game {
     [[nodiscard]] std::size_t state_key() const noexcept {
         return current_board.hash() ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
     }
+public:
+    static Game copy(const Game& other) {
+        Game new_game;
+        new_game.current_player = other.current_player;
+        new_game.current_board = other.current_board;
+        new_game.board_move_sequence = other.board_move_sequence;
+        new_game.choices_cache_ = other.choices_cache_;
+        new_game.choices_dirty_ = other.choices_dirty_;
+        new_game.seen_states_ = other.seen_states_;
+        new_game.game_over_ = other.game_over_;
+        return new_game;
+    }
 private:
     std::unordered_map<Position, Legals> get_moveable_pieces() const;
     const std::vector<Move>& get_choices() const;
@@ -52,6 +64,7 @@ public:
 
     // Accessors
     [[nodiscard]] const std::vector<std::size_t>& get_move_sequence() const noexcept { return board_move_sequence; }
+    [[nodiscard]] const bool& is_looping() const noexcept { return game_over_; }
     [[nodiscard]] const Board& board() const noexcept { return current_board; }
     [[nodiscard]] PieceColor player() const noexcept { return current_player; }
 };
