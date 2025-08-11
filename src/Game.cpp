@@ -106,7 +106,14 @@ const std::vector<Move>& Game::get_choices() const {
     return choices_cache_;
 }
 
-std::unordered_map<Position, Legals> Game::get_moveable_pieces() const {
+Game Game::copy(const Game& other) {
+    // Delegate to the compiler-generated copy constructor to keep this
+    // function correct and future-proof if members are added/changed.
+    return other;
+}
+
+std::unordered_map<Position, Legals> Game::get_moveable_pieces() const
+{
     // IMPORTANT: Don't build a ranges view over a temporary returned from get_pieces().
     // That creates a dangling view once the temporary is destroyed, leading to UB/hangs.
     const auto analyzer = Explorer(current_board);
