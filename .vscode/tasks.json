@@ -5,64 +5,28 @@
 			"label": "CMake Configure",
 			"type": "shell",
 			"command": "cmake",
-			"args": [
-				"-B",
-				"build",
-				"-S",
-				".",
-				"-DCMAKE_BUILD_TYPE=Debug"
-			],
+			"args": ["-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Debug"],
 			"group": "build",
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": false,
-				"panel": "shared"
-			},
-			"problemMatcher": [
-				"$gcc"
-			]
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" },
+			"problemMatcher": ["$gcc"]
 		},
 		{
 			"label": "CMake Build",
 			"type": "shell",
 			"command": "cmake",
-			"args": [
-				"--build",
-				"build",
-				"--config",
-				"Debug"
-			],
-			"group": {
-				"kind": "build",
-				"isDefault": true
-			},
+			"args": ["--build", "build", "--config", "Debug"],
+			"group": { "kind": "build", "isDefault": true },
 			"dependsOn": "CMake Configure",
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": false,
-				"panel": "shared"
-			},
-			"problemMatcher": [
-				"$gcc"
-			]
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" },
+			"problemMatcher": ["$gcc"]
 		},
 		{
 			"label": "Clean Build",
 			"type": "shell",
 			"command": "rm",
-			"args": [
-				"-rf",
-				"build"
-			],
+			"args": ["-rf", "build"],
 			"group": "build",
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": false,
-				"panel": "shared"
-			}
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" }
 		},
 		{
 			"label": "Run Thai Checkers Main",
@@ -70,88 +34,58 @@
 			"command": "./build/thai_checkers_main",
 			"group": "test",
 			"dependsOn": "CMake Build",
-			"presentation": {
-				"echo": true,
-				"reveal": "always",
-				"focus": false,
-				"panel": "shared"
-			}
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" }
 		},
 		{
 			"label": "CMake Build (Temp)",
 			"type": "shell",
 			"command": "cmake",
-			"args": [
-				"--build",
-				"build",
-				"--config",
-				"Debug"
-			],
-			"problemMatcher": [
-				"$gcc"
-			],
+			"args": ["--build", "build", "--config", "Debug"],
+			"problemMatcher": ["$gcc"],
 			"group": "build"
 		},
 		{
 			"label": "CMake Configure (Temp)",
 			"type": "shell",
 			"command": "cmake",
-			"args": [
-				"-B",
-				"build",
-				"-S",
-				".",
-				"-DCMAKE_BUILD_TYPE=Debug"
-			],
-			"problemMatcher": [
-				"$gcc"
-			],
+			"args": ["-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Debug"],
+			"problemMatcher": ["$gcc"],
 			"group": "build"
 		},
 		{
-			"label": "CMake Build (Temp)",
+			"label": "CMake Build (Temp, -j)",
 			"type": "shell",
 			"command": "cmake",
-			"args": [
-				"--build",
-				"build",
-				"--config",
-				"Debug",
-				"--",
-				"-j"
-			],
-			"problemMatcher": [
-				"$gcc"
-			],
+			"args": ["--build", "build", "--config", "Debug", "--", "-j"],
+			"problemMatcher": ["$gcc"],
 			"group": "build"
 		},
 		{
-			"label": "CMake Configure (Temp)",
+			"label": "Format: All (clang-format)",
 			"type": "shell",
-			"command": "cmake",
-			"args": [
-				"-B",
-				"build",
-				"-S",
-				".",
-				"-DCMAKE_BUILD_TYPE=Debug"
-			],
-			"problemMatcher": [
-				"$gcc"
-			],
-			"group": "build"
+			"command": "bash",
+			"args": ["scripts/format_all.sh"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		},
 		{
-			"label": "CMake Build (Temp)",
+			"label": "Format: Staged (clang-format)",
 			"type": "shell",
-			"command": "cmake",
+			"command": "bash",
+			"args": ["scripts/format_staged.sh"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
+		},
+		{
+			"label": "Format: Check (no changes)",
+			"type": "shell",
+			"command": "bash",
 			"args": [
-				"--build",
-				"build",
-				"--config",
-				"Debug"
+				"-lc",
+		"bash -lc 'find include src -type f -name "*.h" -o -name "*.hpp" -o -name "*.cpp" -print0 | xargs -0 clang-format -n --Werror'"
 			],
-			"group": "build"
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		}
 	]
 }
