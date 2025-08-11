@@ -4,5 +4,5 @@
 int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
 {
     Traversal traversal;
-    traversal.traverse(0);
+    traversal.traverse();
 }
