@@ -22,7 +22,7 @@ public:
 
     // Event payloads and subscription APIs
     struct ResultEvent {
-        std::size_t total_games;       // total games completed so far
+        std::size_t game_id;       // total games completed so far
         bool looping;                  // true if ended due to repetition
         std::optional<PieceColor> winner; // winner if not looping
     std::vector<std::size_t> move_history; // sequence of chosen move indices (derived)

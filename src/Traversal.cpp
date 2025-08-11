@@ -63,7 +63,7 @@ void Traversal::traverse_impl(const Game& game, int depth) {
 			for (std::size_t i = 1; i < history.size(); i += 2) moves_only.push_back(history[i]);
 
 			ResultEvent ev{
-				.total_games = total,
+				.game_id = total,
 				.looping = game.is_looping(),
 				.winner = game.is_looping() ? std::nullopt : std::optional<PieceColor>((game.player() == PieceColor::BLACK) ? PieceColor::WHITE : PieceColor::BLACK),
 				.move_history = std::move(moves_only),

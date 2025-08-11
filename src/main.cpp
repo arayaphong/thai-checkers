@@ -11,7 +11,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
     Traversal traversal;
     // Subscribe to Traversal events only; no local aggregation
     traversal.set_result_callback([&](const Traversal::ResultEvent& /*ev*/) {
-        // No-op in this demo. You can inspect ev.total_games, ev.winner/looping, ev.move_history here.
+        // Build score tree here
     });
     traversal.set_summary_callback([&](const Traversal::SummaryEvent& s) {
         std::cout << std::format("\n===== Callback Summary =====\n");
