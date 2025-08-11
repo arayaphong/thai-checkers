@@ -61,34 +61,34 @@
 			"group": "build"
 		},
 		{
-			"label": "Lint: clang-tidy",
+			"label": "Lint: clang-tidy (pre-commit manual)",
 			"type": "shell",
-			"command": "bash",
-			"args": ["scripts/lint_clang_tidy.sh"],
+			"command": "pre-commit",
+			"args": ["run", "clang-tidy", "--all-files", "--hook-stage=manual"],
 			"group": "build",
 			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		},
 		{
-			"label": "Format: All (clang-format)",
+			"label": "Format: All (pre-commit)",
 			"type": "shell",
-			"command": "bash",
-			"args": ["scripts/format_all.sh"],
+			"command": "pre-commit",
+			"args": ["run", "clang-format", "--all-files"],
 			"group": "build",
 			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		},
 		{
-			"label": "Format: Staged (clang-format)",
+			"label": "Format: Staged (pre-commit)",
 			"type": "shell",
-			"command": "bash",
-			"args": ["scripts/format_staged.sh"],
+			"command": "pre-commit",
+			"args": ["run", "clang-format"],
 			"group": "build",
 			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		},
 		{
 			"label": "Format: Check (no changes)",
 			"type": "shell",
-			"command": "bash",
-			"args": ["scripts/format_check.sh"],
+			"command": "pre-commit",
+			"args": ["run", "clang-format", "--all-files"],
 			"group": "build",
 			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
 		}

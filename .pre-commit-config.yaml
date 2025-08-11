@@ -25,19 +25,7 @@ repos:
         name: clang-tidy (system)
         language: system
         entry: bash
-        args:
-          - -lc
-          - >
-            set -euo pipefail;
-            bin="";
-            for c in clang-tidy clang-tidy-20 clang-tidy-19 clang-tidy-18 clang-tidy-17; do
-              if command -v "$c" >/dev/null 2>&1; then bin="$c"; break; fi;
-            done;
-            if [[ -z "$bin" ]]; then echo "clang-tidy not found (tried: clang-tidy, -20, -19, -18, -17)" >&2; exit 127; fi;
-            if [[ ! -f build/compile_commands.json ]]; then
-              cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON;
-            fi;
-            "$bin" -p build "$@"
+        args: ["scripts/lint_clang_tidy.sh"]
         stages: [manual]
         files: '\\.(c|cc|cpp|cxx)$'
         types_or: [c, c++]
