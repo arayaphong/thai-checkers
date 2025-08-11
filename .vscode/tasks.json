@@ -140,6 +140,18 @@
 				"$gcc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "CMake Build (Temp)",
+			"type": "shell",
+			"command": "cmake",
+			"args": [
+				"--build",
+				"build",
+				"--config",
+				"Debug"
+			],
+			"group": "build"
 		}
 	]
 }
