@@ -17,7 +17,7 @@
 #include "Position.h"
 #include "Board.h"
 #include "Piece.h"
-#include "Options.h"
+#include "Legals.h"
 
 /**
  * @brief Analyzes movement and capture possibilities for both Pion and Dame pieces in Thai Checkers.
@@ -114,9 +114,9 @@ public:
     /**
      * @brief Finds all valid moves for a piece at the given position.
      * @param from The starting position of the piece.
-    * @return Options containing either capture sequences or regular move positions.
+    * @return Legals containing either capture sequences or regular move positions.
      */
-    [[nodiscard]] Options find_valid_moves(const Position& from) const;
+    [[nodiscard]] Legals find_valid_moves(const Position& from) const;
 
 private:
     /**

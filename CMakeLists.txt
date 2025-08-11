@@ -57,7 +57,7 @@ add_library(thai_checkers_lib STATIC
     src/Board.cpp
     src/Position.cpp
     src/Explorer.cpp
-    src/Options.cpp
+    src/Legals.cpp
     src/Game.cpp
     src/Traversal.cpp
     # Add other source files here

@@ -53,13 +53,13 @@ thai-checkers/
 │   ├── Board.cpp       # Game board implementation
 │   ├── Explorer.cpp    # Unified piece movement analysis
 │   ├── Position.cpp    # Board position utilities
-│   └── Options.cpp     # Configuration options
+│   └── Legals.cpp      # Legal moves wrapper
 ├── include/            # Header files
 │   ├── Board.h         # Game board interface
 │   ├── Explorer.h      # Unified analyzer interface
 │   ├── Position.h      # Position utilities
 │   ├── Piece.h         # Piece definitions
-│   ├── Options.h       # Configuration options
+│   ├── Legals.h        # Legal moves wrapper
 │   └── main.h          # Main application interface
 ├── tests/              # Unit tests
 │   ├── BoardTest.cpp

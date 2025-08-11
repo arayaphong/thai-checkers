@@ -189,7 +189,7 @@ void Explorer::find_capture_sequences_recursive(
     }
 }
 
-Options Explorer::find_valid_moves(const Position& from) const {
+Legals Explorer::find_valid_moves(const Position& from) const {
     // Check for captures first - they are mandatory in Thai Checkers.
     // We'll build a map keyed by (captured set, final position) to avoid storing equivalent sequences multiple times.
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash> unique_sequences;
@@ -203,12 +203,12 @@ Options Explorer::find_valid_moves(const Position& from) const {
     }
     
     if (!capture_sequences.empty()) {
-        return Options(capture_sequences);
+        return Legals(capture_sequences);
     }
     
     // No captures available, find regular moves
     const auto regular_positions = find_regular_moves(from);
-    return Options(regular_positions);
+    return Legals(regular_positions);
 }
 
 // Removed deduplicate_equivalent_sequences: logic integrated into recursion

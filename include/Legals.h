@@ -45,14 +45,14 @@ struct MoveInfo {
 };
 
 /**
- * @brief Simplified wrapper class that digests input data at construction and stores only essential information.
+ * @brief Wrapper of legal moves for a piece (regular and capture), normalized to MoveInfo.
  * 
  * This class processes either regular move positions or capture sequences at construction time
  * and stores them as a uniform vector of MoveInfo structures. This eliminates the need for
  * complex variant handling and provides a cleaner, more efficient interface.
  * Uses C++20 features for modern, efficient implementation.
  */
-class Options {
+class Legals {
 private:
     std::vector<MoveInfo> moves_;
     bool has_captures_;
@@ -79,10 +79,10 @@ private:
 
 public:
     /**
-     * @brief Constructs Options with regular positions.
+     * @brief Constructs Legals with regular positions.
      * @param positions Container of positions for regular moves.
      */
-    explicit Options(const Positions& positions) : has_captures_(false) {
+    explicit Legals(const Positions& positions) : has_captures_(false) {
         moves_.reserve(positions.size());
         std::ranges::transform(positions, std::back_inserter(moves_),
                               [](const Position& pos) -> MoveInfo {
@@ -91,10 +91,10 @@ public:
     }
 
     /**
-     * @brief Constructs Options with regular positions using move semantics.
+     * @brief Constructs Legals with regular positions using move semantics.
      * @param positions Container of positions for regular moves.
      */
-    explicit Options(Positions&& positions) : has_captures_(false) {
+    explicit Legals(Positions&& positions) : has_captures_(false) {
         moves_.reserve(positions.size());
         for (auto&& pos : positions) {
             moves_.emplace_back(MoveInfo{.target_position = std::move(pos), .captured_positions = {}});
@@ -102,10 +102,10 @@ public:
     }
 
     /**
-     * @brief Constructs Options with capture sequences, processing them immediately.
+     * @brief Constructs Legals with capture sequences, processing them immediately.
      * @param sequences Container of capture sequences.
      */
-    explicit Options(const CaptureSequences& sequences) : has_captures_(true) {
+    explicit Legals(const CaptureSequences& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
         std::ranges::transform(sequences, std::back_inserter(moves_),
                               [](const CaptureSequence& seq) -> MoveInfo {
@@ -114,10 +114,10 @@ public:
     }
 
     /**
-     * @brief Constructs Options with capture sequences using move semantics, processing them immediately.
+     * @brief Constructs Legals with capture sequences using move semantics, processing them immediately.
      * @param sequences Container of capture sequences.
      */
-    explicit Options(CaptureSequences&& sequences) : has_captures_(true) {
+    explicit Legals(CaptureSequences&& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
         for (auto&& seq : sequences) {
             moves_.emplace_back(process_capture_sequence(seq));
@@ -152,7 +152,6 @@ public:
      * @brief Gets a specific position by index with bounds checking.
      * @param index Index of the position to retrieve.
      * @return Position at the given index.
-     * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const Position& get_position(const std::size_t index) const {
         const std::size_t i = moves_.empty() ? 0 : std::min(index, moves_.size() - 1);
@@ -164,8 +163,6 @@ public:
      * @brief Gets the positions of captured pieces for a specific move.
      * @param index Index of the move.
      * @return Vector of positions representing captured pieces (empty for regular moves).
-     * @throws std::out_of_range if index is invalid.
-     * @throws std::invalid_argument if this was constructed from regular positions (for backward compatibility).
      */
     [[nodiscard]] const Positions& get_capture_pieces(const std::size_t index) const {
         static const Positions kEmpty;
@@ -177,7 +174,6 @@ public:
      * @brief Gets complete move information by index.
      * @param index Index of the move.
      * @return MoveInfo containing target position and captured pieces.
-     * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const MoveInfo& get_move_info(const std::size_t index) const {
         static const MoveInfo kDefault{};
@@ -186,27 +182,9 @@ public:
         return moves_[i];
     }
 
-    /**
-     * @brief Provides range-based iteration over moves.
-     * @return Iterator to the beginning of moves.
-     */
+    // Iteration helpers
     [[nodiscard]] auto begin() const noexcept { return moves_.begin(); }
-    
-    /**
-     * @brief Provides range-based iteration over moves.
-     * @return Iterator to the end of moves.
-     */
     [[nodiscard]] auto end() const noexcept { return moves_.end(); }
-
-    /**
-     * @brief Provides range-based iteration over moves.
-     * @return Const iterator to the beginning of moves.
-     */
     [[nodiscard]] auto cbegin() const noexcept { return moves_.cbegin(); }
-    
-    /**
-     * @brief Provides range-based iteration over moves.
-     * @return Const iterator to the end of moves.
-     */
     [[nodiscard]] auto cend() const noexcept { return moves_.cend(); }
 };

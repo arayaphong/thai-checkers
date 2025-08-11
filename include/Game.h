@@ -3,7 +3,7 @@
 #include "Board.h"
 #include "Piece.h"
 #include "Position.h"
-#include "Options.h"
+#include "Legals.h"
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -40,7 +40,7 @@ class Game {
         return current_board.hash() ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
     }
 private:
-    std::unordered_map<Position, Options> get_moveable_pieces() const;
+    std::unordered_map<Position, Legals> get_moveable_pieces() const;
     const std::vector<Move>& get_choices() const;
     Board execute_move(const Move& move);
 public:

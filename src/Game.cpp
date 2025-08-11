@@ -74,15 +74,15 @@ const std::vector<Move>& Game::get_choices() const {
 
     bool any_capture = false;
     for (const auto& from : from_positions) {
-        const auto& options = moveable_pieces.at(from);
+        const auto& legals = moveable_pieces.at(from);
         struct TmpMove { Position to; std::vector<Position> captured; };
         std::vector<TmpMove> tmp;
-        tmp.reserve(options.size());
-        for (std::size_t i = 0; i < options.size(); ++i) {
-            const bool is_cap = options.has_captured();
-            std::vector<Position> captured = is_cap ? options.get_capture_pieces(i) : std::vector<Position>{};
+        tmp.reserve(legals.size());
+        for (std::size_t i = 0; i < legals.size(); ++i) {
+            const bool is_cap = legals.has_captured();
+            std::vector<Position> captured = is_cap ? legals.get_capture_pieces(i) : std::vector<Position>{};
             any_capture = any_capture || !captured.empty();
-            tmp.push_back(TmpMove{options.get_position(i), std::move(captured)});
+            tmp.push_back(TmpMove{legals.get_position(i), std::move(captured)});
         }
         // Sort: captures first handled later, but ensure deterministic order by (to, captured...)
         std::sort(tmp.begin(), tmp.end(), [](const TmpMove& a, const TmpMove& b){
@@ -106,13 +106,13 @@ const std::vector<Move>& Game::get_choices() const {
     return choices_cache_;
 }
 
-std::unordered_map<Position, Options> Game::get_moveable_pieces() const {
+std::unordered_map<Position, Legals> Game::get_moveable_pieces() const {
     // IMPORTANT: Don't build a ranges view over a temporary returned from get_pieces().
     // That creates a dangling view once the temporary is destroyed, leading to UB/hangs.
     const auto analyzer = Explorer(current_board);
     const auto pieces = current_board.get_pieces(current_player); // materialize first
 
-    std::unordered_map<Position, Options> out;
+    std::unordered_map<Position, Legals> out;
     out.reserve(pieces.size());
     for (const auto& [pos, _info] : pieces) {
         auto opts = analyzer.find_valid_moves(pos);
