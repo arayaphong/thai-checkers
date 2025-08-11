@@ -10,6 +10,7 @@
 #include <functional>
 #include <optional>
 #include <vector>
+#include <chrono>
 #include "Game.h"
 
 class Traversal {
@@ -17,8 +18,18 @@ class Traversal {
     Traversal() = default;
 
     void traverse(const Game& game = Game());
-    // Run traversal for given wall-clock duration and then stop, printing a summary.
-    void traverse_for(std::chrono::milliseconds duration, const Game& game = Game());
+    // Run traversal for given wall-clock duration (default: 10s) and then stop, emitting a summary
+    // via callback if set, otherwise printing to stdout.
+    void traverse_for(std::chrono::milliseconds duration = std::chrono::seconds(10), const Game& game = Game());
+
+    // Controls
+    void reset();                  // reset counters and internal loop DB, clear stop flag
+    void request_stop() noexcept { // cooperative stop (safe to call from any thread)
+        stop_.store(true, std::memory_order_relaxed);
+    }
+    [[nodiscard]] std::size_t games_completed() const noexcept {
+        return game_count.load(std::memory_order_relaxed) - 1;
+    }
 
     // Event payloads and subscription APIs
     struct ResultEvent {
@@ -94,6 +105,9 @@ class Traversal {
     }
     bool loop_seen(std::size_t h) const;
     void record_loop(std::size_t h);
+
+    // Clear all loop-detection shards
+    void clear_loops();
 
     // Serialize std::cout output to keep lines intact
     mutable std::mutex io_mutex;

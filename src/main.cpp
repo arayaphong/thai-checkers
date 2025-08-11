@@ -5,6 +5,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <format>
+#include <cstring>
+#include <csignal>
+#include <thread>
+
+namespace {
+volatile std::sig_atomic_t g_stop_flag = 0;
+extern "C" void on_stop_signal(int) { g_stop_flag = 1; }
+} // namespace
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     Traversal traversal;
@@ -29,12 +37,30 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     traversal.set_progress_callback(
         [&](const Traversal::ProgressEvent& p) { std::cout << std::format("[progress] games so far: {}\n", p.games); });
 
-    if (const char* ms_env = std::getenv("TRAVERSAL_MS"); ms_env) {
-        const long ms = std::strtol(ms_env, nullptr, 10);
-        if (ms > 0) {
-            traversal.traverse_for(std::chrono::milliseconds(ms));
+    long ms = 10000; // default to 10s if not set
+    if (const char* ms_env = std::getenv("TRAVERSAL_MS"); ms_env && *ms_env) {
+        // Special value for infinite traversal
+        if (std::strcmp(ms_env, "INF") == 0 || std::strcmp(ms_env, "inf") == 0) {
+            // Install cooperative stop on SIGINT/SIGTERM
+            std::signal(SIGINT, on_stop_signal);
+            std::signal(SIGTERM, on_stop_signal);
+            std::thread stopper([&]() {
+                while (!g_stop_flag) std::this_thread::sleep_for(std::chrono::milliseconds(25));
+                traversal.request_stop();
+            });
+            traversal.traverse();
+            g_stop_flag = 1;
+            if (stopper.joinable()) stopper.join();
             return 0;
         }
+        char* end = nullptr;
+        const long parsed = std::strtol(ms_env, &end, 10);
+        if (end != ms_env && parsed > 0) ms = parsed;
+        // else keep default 10s
+    } else {
+        // Expose default in the environment for visibility to any downstream tools
+        setenv("TRAVERSAL_MS", "10000", 0);
     }
-    traversal.traverse();
+    traversal.traverse_for(std::chrono::milliseconds(ms));
+    return 0;
 }

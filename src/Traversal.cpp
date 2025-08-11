@@ -31,6 +31,23 @@ void Traversal::record_loop(std::size_t h) {
     s.set.insert(h);
 }
 
+void Traversal::clear_loops() {
+    for (auto& shard : loop_shards_) {
+        std::unique_lock lk(shard.mtx);
+        shard.set.clear();
+    }
+}
+
+void Traversal::reset() {
+    request_stop();
+    clear_loops();
+    // Reset counters and timers
+    game_count.store(1, std::memory_order_relaxed);
+    stop_.store(false, std::memory_order_relaxed);
+    start_tp_ = {};
+    deadline_tp_ = {};
+}
+
 void Traversal::traverse_impl(const Game& game, int depth) {
     // Honor stop signal early
     if (stop_.load(std::memory_order_relaxed)) return;
@@ -125,10 +142,49 @@ void Traversal::traverse_impl(const Game& game, int depth) {
     }
 }
 
-void Traversal::traverse(const Game& game) { traverse_impl(game, /*depth=*/0); }
+void Traversal::traverse(const Game& game) {
+    // Fresh run state, similar to traverse_for but without a deadline
+    stop_.store(false, std::memory_order_relaxed);
+    game_count.store(1, std::memory_order_relaxed);
+    clear_loops();
+    start_tp_ = std::chrono::steady_clock::now();
+    deadline_tp_ = {};
+
+    // Progress thread (no deadline, only emits progress callbacks)
+    std::thread progress_thr([this]() {
+        static thread_local auto last = std::chrono::steady_clock::now();
+        while (!stop_.load(std::memory_order_relaxed)) {
+            const auto now = std::chrono::steady_clock::now();
+            if ((now - last) >= progress_interval_ms_) {
+                ProgressEvent ev{.games = game_count.load(std::memory_order_relaxed) - 1};
+                std::function<void(const ProgressEvent&)> cb_copy;
+                {
+                    std::scoped_lock lock(cb_mutex_);
+                    cb_copy = progress_cb_;
+                }
+                if (cb_copy) cb_copy(ev);
+                last = now;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    });
+
+    // Run traversal to completion
+    traverse_impl(game, /*depth=*/0);
+
+    // Signal progress thread to stop and join
+    stop_.store(true, std::memory_order_relaxed);
+    if (progress_thr.joinable()) progress_thr.join();
+
+    // Emit summary (via callback or stdout fallback)
+    print_summary();
+}
 
 void Traversal::traverse_for(std::chrono::milliseconds duration, const Game& game) {
+    // fresh run state
     stop_.store(false, std::memory_order_relaxed);
+    game_count.store(1, std::memory_order_relaxed);
+    clear_loops();
     start_tp_ = std::chrono::steady_clock::now();
     deadline_tp_ = start_tp_ + duration;
 
@@ -141,7 +197,7 @@ void Traversal::traverse_for(std::chrono::milliseconds duration, const Game& gam
             }
             static thread_local auto last = std::chrono::steady_clock::now();
             const auto now = std::chrono::steady_clock::now();
-            if (progress_cb_ && (now - last) >= progress_interval_ms_) {
+            if ((now - last) >= progress_interval_ms_) {
                 ProgressEvent ev{.games = game_count.load(std::memory_order_relaxed) - 1};
                 // Copy cb under lock to avoid races
                 std::function<void(const ProgressEvent&)> cb_copy;
@@ -220,5 +276,10 @@ void Traversal::print_summary() const {
             .hwm_kb = hwm_kb,
         };
         cb_copy(ev);
+    } else {
+        std::scoped_lock lk(io_mutex);
+        std::cout << "Summary: wall=" << secs << "s, games=" << games << ", throughput=" << cps << "/s, cpu_s=" << cpu_s
+                  << ", cpu_util=" << ((secs > 0.0 && cpu_s >= 0.0) ? (cpu_s / secs) * 100.0 : -1.0)
+                  << "%, rss_kb=" << rss_kb << ", hwm_kb=" << hwm_kb << '\n';
     }
 }
