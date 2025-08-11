@@ -16,7 +16,7 @@ using CaptureSequence = std::vector<Position>;
 using CaptureSequences = std::set<CaptureSequence>;
 
 // C++20 concepts for type safety and better error messages
-template<typename T>
+template <typename T>
 concept PositionContainer = requires(T t) {
     typename std::remove_cvref_t<T>::value_type;
     requires std::same_as<typename std::remove_cvref_t<T>::value_type, Position>;
@@ -26,34 +26,32 @@ concept PositionContainer = requires(T t) {
 
 /**
  * @brief Simplified move data structure that digests input at construction time.
- * 
+ *
  * This struct holds the essential data extracted from either regular positions
  * or capture sequences, providing a uniform interface for accessing move information.
  */
 struct MoveInfo {
-    Position target_position;           // Where the piece lands
-    Positions captured_positions;       // What pieces are captured (empty for regular moves)
-    
+    Position target_position;     // Where the piece lands
+    Positions captured_positions; // What pieces are captured (empty for regular moves)
+
     // C++20 three-way comparison for sorting and searching
     [[nodiscard]] constexpr auto operator<=>(const MoveInfo&) const noexcept = default;
     [[nodiscard]] constexpr bool operator==(const MoveInfo&) const noexcept = default;
-    
+
     // Check if this is a capture move
-    [[nodiscard]] constexpr bool is_capture() const noexcept {
-        return !captured_positions.empty();
-    }
+    [[nodiscard]] constexpr bool is_capture() const noexcept { return !captured_positions.empty(); }
 };
 
 /**
  * @brief Wrapper of legal moves for a piece (regular and capture), normalized to MoveInfo.
- * 
+ *
  * This class processes either regular move positions or capture sequences at construction time
  * and stores them as a uniform vector of MoveInfo structures. This eliminates the need for
  * complex variant handling and provides a cleaner, more efficient interface.
  * Uses C++20 features for modern, efficient implementation.
  */
 class Legals {
-private:
+  private:
     std::vector<MoveInfo> moves_;
     bool has_captures_;
 
@@ -62,32 +60,31 @@ private:
      * @param sequence The capture sequence to process.
      * @return MoveInfo with target position and captured pieces.
      */
-    [[nodiscard]] static MoveInfo process_capture_sequence(const CaptureSequence& sequence) {      
+    [[nodiscard]] static MoveInfo process_capture_sequence(const CaptureSequence& sequence) {
         MoveInfo move_info;
         move_info.target_position = sequence.back(); // Last position is the landing position
-        
+
         // Extract captured pieces (even indices in the sequence)
-        auto even_indices = std::views::iota(std::size_t{0}, sequence.size()) 
-                          | std::views::filter([](const auto i) { return i % 2 == 0; });
-        
+        auto even_indices = std::views::iota(std::size_t{0}, sequence.size()) |
+                            std::views::filter([](const auto i) { return i % 2 == 0; });
+
         move_info.captured_positions.reserve(std::ranges::distance(even_indices));
         std::ranges::transform(even_indices, std::back_inserter(move_info.captured_positions),
-                              [&sequence](const auto i) -> const Position& { return sequence[i]; });
-        
+                               [&sequence](const auto i) -> const Position& { return sequence[i]; });
+
         return move_info;
     }
 
-public:
+  public:
     /**
      * @brief Constructs Legals with regular positions.
      * @param positions Container of positions for regular moves.
      */
     explicit Legals(const Positions& positions) : has_captures_(false) {
         moves_.reserve(positions.size());
-        std::ranges::transform(positions, std::back_inserter(moves_),
-                              [](const Position& pos) -> MoveInfo {
-                                  return MoveInfo{.target_position = pos, .captured_positions = {}};
-                              });
+        std::ranges::transform(positions, std::back_inserter(moves_), [](const Position& pos) -> MoveInfo {
+            return MoveInfo{.target_position = pos, .captured_positions = {}};
+        });
     }
 
     /**
@@ -108,9 +105,7 @@ public:
     explicit Legals(const CaptureSequences& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
         std::ranges::transform(sequences, std::back_inserter(moves_),
-                              [](const CaptureSequence& seq) -> MoveInfo {
-                                  return process_capture_sequence(seq);
-                              });
+                               [](const CaptureSequence& seq) -> MoveInfo { return process_capture_sequence(seq); });
     }
 
     /**
@@ -119,34 +114,26 @@ public:
      */
     explicit Legals(CaptureSequences&& sequences) : has_captures_(true) {
         moves_.reserve(sequences.size());
-        for (auto&& seq : sequences) {
-            moves_.emplace_back(process_capture_sequence(seq));
-        }
+        for (auto&& seq : sequences) { moves_.emplace_back(process_capture_sequence(seq)); }
     }
 
     /**
      * @brief Checks if there are any captured pieces in the move data.
      * @return True if there are captured pieces, false otherwise.
      */
-    [[nodiscard]] constexpr bool has_captured() const noexcept {
-        return has_captures_;
-    }
+    [[nodiscard]] constexpr bool has_captured() const noexcept { return has_captures_; }
 
     /**
      * @brief Gets the number of available moves.
      * @return Size of the moves container.
      */
-    [[nodiscard]] constexpr std::size_t size() const noexcept {
-        return moves_.size();
-    }
+    [[nodiscard]] constexpr std::size_t size() const noexcept { return moves_.size(); }
 
     /**
      * @brief Checks if there are no moves available.
      * @return True if empty, false otherwise.
      */
-    [[nodiscard]] constexpr bool empty() const noexcept {
-        return moves_.empty();
-    }
+    [[nodiscard]] constexpr bool empty() const noexcept { return moves_.empty(); }
 
     /**
      * @brief Gets a specific position by index with bounds checking.

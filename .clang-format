@@ -1,0 +1,23 @@
+# C++ formatting rules for Thai Checkers
+BasedOnStyle: LLVM
+
+# Braces and short statements
+BreakBeforeBraces: Attach
+AllowShortFunctionsOnASingleLine: All
+AllowShortBlocksOnASingleLine: Always
+# Valid values: Never, WithoutElse, AllIfsAndElse
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+
+# Indentation and whitespace
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+PointerAlignment: Left
+DerivePointerAlignment: false
+
+# Line length
+ColumnLimit: 120
+
+# Includes
+SortIncludes: false

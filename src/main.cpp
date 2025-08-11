@@ -6,8 +6,7 @@
 #include <iostream>
 #include <format>
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
-{
+int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     Traversal traversal;
     // Subscribe to Traversal events only; no local aggregation
     traversal.set_result_callback([&](const Traversal::ResultEvent& /*ev*/) {
@@ -20,18 +19,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
         std::cout << std::format("Throughput: {:.2f} games/s\n", s.throughput_games_per_sec);
         if (s.cpu_seconds >= 0.0) {
             std::cout << std::format("CPU time: {:.3f}s\n", s.cpu_seconds);
-            if (s.cpu_util_percent >= 0.0) {
-                std::cout << std::format("CPU util: {:.1f}%\n", s.cpu_util_percent);
-            }
+            if (s.cpu_util_percent >= 0.0) { std::cout << std::format("CPU util: {:.1f}%\n", s.cpu_util_percent); }
         }
-    if (s.rss_kb > 0) std::cout << std::format("RSS: {} MB\n", s.rss_kb / 1024);
-    if (s.hwm_kb > 0) std::cout << std::format("Peak RSS: {} MB\n", s.hwm_kb / 1024);
+        if (s.rss_kb > 0) std::cout << std::format("RSS: {} MB\n", s.rss_kb / 1024);
+        if (s.hwm_kb > 0) std::cout << std::format("Peak RSS: {} MB\n", s.hwm_kb / 1024);
     });
 
     traversal.set_progress_interval(std::chrono::milliseconds(3000));
-    traversal.set_progress_callback([&](const Traversal::ProgressEvent& p) {
-        std::cout << std::format("[progress] games so far: {}\n", p.games);
-    });
+    traversal.set_progress_callback(
+        [&](const Traversal::ProgressEvent& p) { std::cout << std::format("[progress] games so far: {}\n", p.games); });
 
     if (const char* ms_env = std::getenv("TRAVERSAL_MS"); ms_env) {
         const long ms = std::strtol(ms_env, nullptr, 10);

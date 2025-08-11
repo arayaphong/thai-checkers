@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <unordered_set>
 
-
 // Function declarations
 std::string piece_symbol(bool is_black, bool is_dame);
 std::string board_to_string(const Board& board);
@@ -39,13 +38,16 @@ class Game {
     [[nodiscard]] std::size_t state_key() const noexcept {
         return current_board.hash() ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
     }
-public:
+
+  public:
     static Game copy(const Game& other);
-private:
+
+  private:
     std::unordered_map<Position, Legals> get_moveable_pieces() const;
     const std::vector<Move>& get_choices() const;
     Board execute_move(const Move& move);
-public:
+
+  public:
     Game();
     [[nodiscard]] std::size_t move_count() const;
     void select_move(std::size_t index);

@@ -11,6 +11,4 @@ Position Position::from_index(int index) noexcept {
     return Position{static_cast<std::uint8_t>(index)};
 }
 
-std::string Position::to_string() const noexcept {
-    return std::format("{}{}", static_cast<char>('A' + x()), y() + 1);
-}
+std::string Position::to_string() const noexcept { return std::format("{}{}", static_cast<char>('A' + x()), y() + 1); }

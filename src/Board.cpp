@@ -11,15 +11,13 @@ std::size_t Board::hash() const noexcept {
     // Compose a 64-bit hash: top 32 bits are occupancy layout, lower bits summarize first up-to-16 pieces' color/type.
     std::bitset<64> bits;
     // Occupancy in bits 32..63
-    for (int i = 0; i < 32; ++i) {
-        bits[i + 32] = ((occ_bits_ >> i) & 1u) != 0u;
-    }
+    for (int i = 0; i < 32; ++i) { bits[i + 32] = ((occ_bits_ >> i) & 1u) != 0u; }
     // Encode first 16 occupied squares' metadata (type in 0..15, color in 16..31)
     int count = 0;
     for (int i = 0; i < 32 && count < 16; ++i) {
         const auto m = static_cast<std::uint32_t>(1u) << i;
         if ((occ_bits_ & m) == 0u) continue;
-        bits[count]      = ((dame_bits_  & m) != 0u);
+        bits[count] = ((dame_bits_ & m) != 0u);
         bits[count + 16] = ((black_bits_ & m) != 0u);
         ++count;
     }
@@ -36,9 +34,9 @@ Board Board::setup() noexcept {
             const auto p = Position::from_coords(col, row);
             const auto idx = static_cast<unsigned>(p.hash());
             const auto m = static_cast<std::uint32_t>(1u) << idx;
-            board.occ_bits_   |= m;
+            board.occ_bits_ |= m;
             board.black_bits_ |= m;
-            board.dame_bits_  &= ~m;
+            board.dame_bits_ &= ~m;
         }
     }
     // White rows 6..7
@@ -49,9 +47,9 @@ Board Board::setup() noexcept {
             const auto p = Position::from_coords(col, row);
             const auto idx = static_cast<unsigned>(p.hash());
             const auto m = static_cast<std::uint32_t>(1u) << idx;
-            board.occ_bits_   |= m;
+            board.occ_bits_ |= m;
             board.black_bits_ &= ~m;
-            board.dame_bits_  &= ~m;
+            board.dame_bits_ &= ~m;
         }
     }
     return board;
@@ -92,24 +90,26 @@ void Board::move_piece(const Position& from, const Position& to) noexcept {
     if ((occ_bits_ & fm) == 0u) return;
     if ((occ_bits_ & tm) != 0u) return;
     const bool was_black = (black_bits_ & fm) != 0u;
-    const bool was_dame  = (dame_bits_  & fm) != 0u;
+    const bool was_dame = (dame_bits_ & fm) != 0u;
     // Clear from
-    occ_bits_   &= ~fm;
+    occ_bits_ &= ~fm;
     black_bits_ &= ~fm;
-    dame_bits_  &= ~fm;
+    dame_bits_ &= ~fm;
     // Set to
-    occ_bits_   |= tm;
-    if (was_black) black_bits_ |= tm; else black_bits_ &= ~tm;
-    if (was_dame)  dame_bits_  |= tm; else dame_bits_  &= ~tm;
+    occ_bits_ |= tm;
+    if (was_black) black_bits_ |= tm;
+    else black_bits_ &= ~tm;
+    if (was_dame) dame_bits_ |= tm;
+    else dame_bits_ &= ~tm;
 }
 
 void Board::remove_piece(const Position& pos) noexcept {
     if (!is_valid_position(pos)) return;
     const auto idx = static_cast<unsigned>(pos.hash());
     const auto m = static_cast<std::uint32_t>(1u) << idx;
-    occ_bits_   &= ~m;
+    occ_bits_ &= ~m;
     black_bits_ &= ~m;
-    dame_bits_  &= ~m;
+    dame_bits_ &= ~m;
 }
 
 Pieces Board::get_pieces(PieceColor color) const noexcept {
@@ -119,7 +119,7 @@ Pieces Board::get_pieces(PieceColor color) const noexcept {
         const auto m = static_cast<std::uint32_t>(1u) << i;
         if ((occ_bits_ & m) == 0u) continue;
         const bool is_black = (black_bits_ & m) != 0u;
-        const bool is_dame  = (dame_bits_  & m) != 0u;
+        const bool is_dame = (dame_bits_ & m) != 0u;
         if ((color == PieceColor::BLACK) != is_black) continue;
         const auto pos = Position::from_index(i);
         out.emplace(pos, PieceInfo{.color = is_black ? PieceColor::BLACK : PieceColor::WHITE,

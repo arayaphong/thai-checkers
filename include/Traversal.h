@@ -13,7 +13,7 @@
 #include "Game.h"
 
 class Traversal {
-public:
+  public:
     Traversal() = default;
 
     void traverse(const Game& game = Game());
@@ -22,20 +22,20 @@ public:
 
     // Event payloads and subscription APIs
     struct ResultEvent {
-        std::size_t game_id;       // total games completed so far
-        bool looping;                  // true if ended due to repetition
-        std::optional<PieceColor> winner; // winner if not looping
-    std::vector<std::size_t> move_history; // sequence of chosen move indices (derived)
-    std::vector<std::size_t> history;      // raw board_move_sequence (initial hash, then index, hash, ...)
+        std::size_t game_id;                   // total games completed so far
+        bool looping;                          // true if ended due to repetition
+        std::optional<PieceColor> winner;      // winner if not looping
+        std::vector<std::size_t> move_history; // sequence of chosen move indices (derived)
+        std::vector<std::size_t> history;      // raw board_move_sequence (initial hash, then index, hash, ...)
     };
     struct SummaryEvent {
         double wall_seconds;
         std::size_t games;
         double throughput_games_per_sec;
-        double cpu_seconds;            // -1 if unavailable
-        double cpu_util_percent;       // may exceed 100% on multi-core
-        long rss_kb;                   // -1 if unavailable
-        long hwm_kb;                   // -1 if unavailable
+        double cpu_seconds;      // -1 if unavailable
+        double cpu_util_percent; // may exceed 100% on multi-core
+        long rss_kb;             // -1 if unavailable
+        long hwm_kb;             // -1 if unavailable
     };
     struct ProgressEvent {
         std::size_t games;
@@ -52,11 +52,9 @@ public:
         std::scoped_lock lock(cb_mutex_);
         progress_cb_ = std::move(cb);
     }
-    void set_progress_interval(std::chrono::milliseconds interval) {
-        progress_interval_ms_ = interval;
-    }
+    void set_progress_interval(std::chrono::milliseconds interval) { progress_interval_ms_ = interval; }
 
-private:
+  private:
     // Counter for completed games; updated concurrently
     std::atomic<std::size_t> game_count{1};
 

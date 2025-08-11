@@ -5,24 +5,20 @@
 #include <ranges>
 
 std::string piece_symbol(bool is_black, bool is_dame) {
-    return is_black
-               ? (is_dame ? "□" : "○")
-               : (is_dame ? "■" : "●");
+    return is_black ? (is_dame ? "□" : "○") : (is_dame ? "■" : "●");
 }
 
 std::string board_to_string(const Board& board) {
     return [&]() {
         std::string str = "   ";
-        for (char col : std::views::iota('A', 'I')) {
-            str += std::format("{} ", col);
-        }
+        for (char col : std::views::iota('A', 'I')) { str += std::format("{} ", col); }
         str += "\n";
-        
+
         for (auto i : std::views::iota(0, 8)) {
             str += std::format(" {} ", i + 1);
             for (auto j : std::views::iota(0, 8)) {
                 const bool is_light_square = (i + j) % 2 == 0;
-                
+
                 const std::string symbol = [&]() -> std::string {
                     if (is_light_square) {
                         return ".";
@@ -36,7 +32,7 @@ std::string board_to_string(const Board& board) {
                         }
                     }
                 }();
-                
+
                 str += std::format("{} ", symbol);
             }
             str += "\n";
@@ -68,14 +64,16 @@ const std::vector<Move>& Game::get_choices() const {
     std::vector<Position> from_positions;
     from_positions.reserve(moveable_pieces.size());
     for (const auto& kv : moveable_pieces) from_positions.push_back(kv.first);
-    std::sort(from_positions.begin(), from_positions.end(), [](const Position& a, const Position& b){
-        return a.hash() < b.hash();
-    });
+    std::sort(from_positions.begin(), from_positions.end(),
+              [](const Position& a, const Position& b) { return a.hash() < b.hash(); });
 
     bool any_capture = false;
     for (const auto& from : from_positions) {
         const auto& legals = moveable_pieces.at(from);
-        struct TmpMove { Position to; std::vector<Position> captured; };
+        struct TmpMove {
+            Position to;
+            std::vector<Position> captured;
+        };
         std::vector<TmpMove> tmp;
         tmp.reserve(legals.size());
         for (std::size_t i = 0; i < legals.size(); ++i) {
@@ -85,20 +83,19 @@ const std::vector<Move>& Game::get_choices() const {
             tmp.push_back(TmpMove{legals.get_position(i), std::move(captured)});
         }
         // Sort: captures first handled later, but ensure deterministic order by (to, captured...)
-        std::sort(tmp.begin(), tmp.end(), [](const TmpMove& a, const TmpMove& b){
+        std::sort(tmp.begin(), tmp.end(), [](const TmpMove& a, const TmpMove& b) {
             if (a.to.hash() != b.to.hash()) return a.to.hash() < b.to.hash();
             return a.captured < b.captured; // lexicographic on positions
         });
-        for (auto& m : tmp) {
-            choices_cache_.push_back(Move{from, m.to, std::move(m.captured)});
-        }
+        for (auto& m : tmp) { choices_cache_.push_back(Move{from, m.to, std::move(m.captured)}); }
     }
 
     if (any_capture) {
         // Keep only capture moves
         std::vector<Move> capture_only;
         capture_only.reserve(choices_cache_.size());
-        for (auto& m : choices_cache_) if (m.is_capture()) capture_only.push_back(std::move(m));
+        for (auto& m : choices_cache_)
+            if (m.is_capture()) capture_only.push_back(std::move(m));
         choices_cache_.swap(capture_only);
     }
 
@@ -112,8 +109,7 @@ Game Game::copy(const Game& other) {
     return other;
 }
 
-std::unordered_map<Position, Legals> Game::get_moveable_pieces() const
-{
+std::unordered_map<Position, Legals> Game::get_moveable_pieces() const {
     // IMPORTANT: Don't build a ranges view over a temporary returned from get_pieces().
     // That creates a dangling view once the temporary is destroyed, leading to UB/hangs.
     const auto analyzer = Explorer(current_board);
@@ -123,9 +119,7 @@ std::unordered_map<Position, Legals> Game::get_moveable_pieces() const
     out.reserve(pieces.size());
     for (const auto& [pos, _info] : pieces) {
         auto opts = analyzer.find_valid_moves(pos);
-        if (!opts.empty()) {
-            out.emplace(pos, std::move(opts));
-        }
+        if (!opts.empty()) { out.emplace(pos, std::move(opts)); }
     }
     return out;
 }
@@ -142,14 +136,10 @@ Board Game::execute_move(const Move& move) {
     new_board.move_piece(from, to);
 
     // Check if the piece is promoted to a dame
-    if (to.y() == 0 || to.y() == Position::board_size - 1) {
-        new_board.promote_piece(to);
-    }
+    if (to.y() == 0 || to.y() == Position::board_size - 1) { new_board.promote_piece(to); }
 
     // Remove captured pieces
-    for (const auto& pos : captured) {
-        new_board.remove_piece(pos);
-    }
+    for (const auto& pos : captured) { new_board.remove_piece(pos); }
 
     // Keep track of the new board state
     board_move_sequence.push_back(new_board.hash());
@@ -163,23 +153,19 @@ Board Game::execute_move(const Move& move) {
 
     // Repetition detection: if this state was seen, end the game (treat as draw)
     const auto key = state_key();
-    if (!seen_states_.insert(key).second) {
-        game_over_ = true;
-    }
+    if (!seen_states_.insert(key).second) { game_over_ = true; }
 
     return new_board;
 }
 
-std::size_t Game::move_count() const
-{
+std::size_t Game::move_count() const {
     if (game_over_) return 0;
     // Safe to call get_choices(); if it were to throw, we wouldn't mark noexcept.
     // Here we assume underlying operations won't throw in typical use.
     return get_choices().size();
 }
 
-void Game::select_move(std::size_t index)
-{
+void Game::select_move(std::size_t index) {
     const auto& choices = get_choices();
 
     // Keep track of the move sequence
@@ -189,9 +175,7 @@ void Game::select_move(std::size_t index)
     (void)execute_move(choices[index]);
 }
 
-void Game::print_board() const noexcept {
-    std::cout << board_to_string(current_board);
-}
+void Game::print_board() const noexcept { std::cout << board_to_string(current_board); }
 
 void Game::print_choices() const {
     const auto& choices = get_choices();
