@@ -23,6 +23,7 @@ SCRIPT_ARCH="native"   # native|znver2|znver3|znver4
 SCRIPT_LTO="ON"        # ON|OFF
 SCRIPT_AGGRESSIVE=false # add -ffast-math/-funroll-loops/-finline-functions
 SCRIPT_THREADS=""      # OMP_NUM_THREADS value when running
+SCRIPT_TIMEOUT=""      # timeout in seconds, empty means infinity
 
 print_usage() {
   cat <<EOF
@@ -39,12 +40,15 @@ Options:
   --lto <on|off>                       Enable Link Time Optimization (default: on)
   --aggressive                         Add extra opts: -ffast-math -funroll-loops -finline-functions
   --threads <N>                        Set OMP_NUM_THREADS when running
+  --timeout <N>                        Set execution timeout in seconds (default: infinity)
 
 Examples:
-  $0 --run -- --quiet -s 10                 # run for 10s silently
-  $0 --profiling -- -s 10                   # profile quietly by default
-  $0 --profiling --profiler callgrind -- -s 10  # force Valgrind/Callgrind
-  $0 --profiling --no-quiet -- -s 10        # profile verbosely
+  $0 --run                                   # run with default settings
+  $0 --run --timeout 30                     # run with 30s timeout
+  $0 --profiling                             # profile quietly by default
+  $0 --profiling --profiler callgrind        # force Valgrind/Callgrind
+  $0 --profiling --no-quiet                 # profile verbosely
+  $0 --profiling --timeout 60               # profile with 60s timeout
 
 Notes:
   - A symlink '${ROOT_SYMLINK}' is created to point at ${BIN_PATH} for convenience.
@@ -57,6 +61,28 @@ ensure_symlink() {
   # Create or refresh root-level convenience symlink
   if [[ -f "$BIN_PATH" ]]; then
     ln -sf "$BIN_PATH" "$ROOT_SYMLINK"
+  fi
+}
+
+run_with_timeout() {
+  # Helper function to run commands with optional timeout
+  # Usage: run_with_timeout <timeout_seconds> <command> [args...]
+  # If timeout_seconds is empty or "infinity", runs without timeout
+  local timeout_val="$1"
+  shift
+
+  if [[ -z "$timeout_val" || "$timeout_val" == "infinity" ]]; then
+    # No timeout, run directly
+    "$@"
+  else
+    # Use timeout command if available
+    if command -v timeout >/dev/null 2>&1; then
+      echo -e "${YELLOW}Running with ${timeout_val}s timeout...${NC}"
+      timeout "$timeout_val" "$@"
+    else
+      echo -e "${YELLOW}Warning: 'timeout' command not available, running without timeout...${NC}"
+      "$@"
+    fi
   fi
 }
 
@@ -177,9 +203,9 @@ run_optimized() {
     RUN_ENV+=( OMP_NUM_THREADS="$SCRIPT_THREADS" )
   fi
   if command -v stdbuf >/dev/null 2>&1; then
-    "${RUN_ENV[@]}" stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
+    run_with_timeout "$SCRIPT_TIMEOUT" "${RUN_ENV[@]}" stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
   else
-    "${RUN_ENV[@]}" "./$ROOT_SYMLINK" "${ARGS[@]}"
+    run_with_timeout "$SCRIPT_TIMEOUT" "${RUN_ENV[@]}" "./$ROOT_SYMLINK" "${ARGS[@]}"
   fi
 }
 
@@ -211,7 +237,7 @@ profile_optimized() {
     if command -v valgrind >/dev/null 2>&1 && command -v callgrind_annotate >/dev/null 2>&1; then
       echo -e "${YELLOW}Using Valgrind Callgrind (forced).${NC}"
       local CG_OUT="$BUILD_DIR/callgrind.out"
-      valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
+      run_with_timeout "$SCRIPT_TIMEOUT" valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
       echo -e "${GREEN}✓ Callgrind run complete. Annotated summary (top ~60 lines)...${NC}"
       callgrind_annotate "$CG_OUT" | head -n 60 || true
       echo -e "${BLUE}Callgrind output at: $CG_OUT${NC}"
@@ -259,7 +285,7 @@ profile_optimized() {
       echo -e "Hint: try 'sudo sysctl kernel.perf_event_paranoid=1' and 'sudo sysctl kernel.kptr_restrict=0' if recording fails."
     fi
     local PERF_OUT="$BUILD_DIR/perf.data"
-  if OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$PERF_BIN" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
+  if run_with_timeout "$SCRIPT_TIMEOUT" env OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$PERF_BIN" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
       echo -e "${GREEN}✓ perf record complete. Generating report (top ~60 lines)...${NC}"
       "$PERF_BIN" report --stdio -i "$PERF_OUT" | head -n 60 || true
       echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
@@ -272,7 +298,7 @@ profile_optimized() {
         ALT_PERF=$(find "$PERF_SCAN_DIR" -maxdepth 2 -type f -name perf 2>/dev/null | sort -V | tail -n 1 || true)
         if [[ -n "$ALT_PERF" && "$ALT_PERF" != "$PERF_BIN" ]]; then
           echo -e "${YELLOW}Retrying with discovered perf binary: ${BLUE}$ALT_PERF${NC}"
-          if OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$ALT_PERF" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
+          if run_with_timeout "$SCRIPT_TIMEOUT" env OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "$ALT_PERF" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
             echo -e "${GREEN}✓ perf record complete (alt). Generating report (top ~60 lines)...${NC}"
             "$ALT_PERF" report --stdio -i "$PERF_OUT" | head -n 60 || true
             echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
@@ -287,7 +313,7 @@ profile_optimized() {
   if [[ "$SCRIPT_PROFILER" != "gprof" ]] && command -v valgrind >/dev/null 2>&1 && command -v callgrind_annotate >/dev/null 2>&1; then
     echo -e "${YELLOW}Using Valgrind Callgrind for profiling.${NC}"
     local CG_OUT="$BUILD_DIR/callgrind.out"
-  OMP_NUM_THREADS="${SCRIPT_THREADS:-}" valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
+  run_with_timeout "$SCRIPT_TIMEOUT" env OMP_NUM_THREADS="${SCRIPT_THREADS:-}" valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
     echo -e "${GREEN}✓ Callgrind run complete. Annotated summary (top ~60 lines)...${NC}"
     callgrind_annotate "$CG_OUT" | head -n 60 || true
     echo -e "${BLUE}Callgrind output at: $CG_OUT${NC}"
@@ -316,7 +342,7 @@ profile_optimized() {
         echo -e "${GREEN}✓ Build complete. Running to generate gmon.out...${NC}"
         (
           cd "$GPROF_BUILD_DIR" && \
-          stdbuf -oL -eL OMP_NUM_THREADS="${SCRIPT_THREADS:-}" "./$APP_NAME" "${RUN_ARGS[@]}" || true
+          run_with_timeout "$SCRIPT_TIMEOUT" env OMP_NUM_THREADS="${SCRIPT_THREADS:-}" stdbuf -oL -eL "./$APP_NAME" "${RUN_ARGS[@]}" || true
         )
         if [[ -f "$GPROF_BUILD_DIR/gmon.out" ]]; then
           echo -e "${GREEN}✓ Profiling data generated. Printing gprof summary (top ~100 lines)...${NC}"
@@ -399,6 +425,10 @@ while [[ $# -gt 0 ]]; do
       SCRIPT_THREADS="$2"; shift 2 ;;
     --threads=*)
       SCRIPT_THREADS="${1#*=}"; shift ;;
+    --timeout)
+      SCRIPT_TIMEOUT="$2"; shift 2 ;;
+    --timeout=*)
+      SCRIPT_TIMEOUT="${1#*=}"; shift ;;
     -h|--help)
       print_usage; exit 0 ;;
     --)
