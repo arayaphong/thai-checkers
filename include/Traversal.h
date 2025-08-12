@@ -70,8 +70,21 @@ class Traversal {
         Game game;
         std::uint32_t next_idx{0};
     };
+
+    // Optimized checkpoint frame (stores only incremental state)
+    struct CompactFrame {
+        uint32_t board_occ, board_black, board_dame;
+        uint8_t player;
+        uint8_t looping;
+        uint32_t next_idx;
+        uint32_t parent_frame_idx; // Index into work_stack for parent
+        uint32_t move_from_parent; // Move index that led to this state
+        uint32_t current_hash;     // Board hash (for loop detection)
+    };
     bool save_checkpoint(const std::string& path) const;
+    bool save_checkpoint_compact(const std::string& path, bool compress = true) const;
     bool load_checkpoint(const std::string& path);
+    bool load_checkpoint_compact(const std::string& path);
     void traverse_iterative(Game root); // single-thread iterative DFS (fills work_stack_)
     void resume_or_start(const std::string& chk_path, Game root = Game());
     void run_from_work_stack();      // continue using pre-populated work_stack_

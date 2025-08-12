@@ -46,6 +46,15 @@ struct FrameBlob {
     GameBlob game;
     uint32_t next_idx;
 };
+struct CompactFrame {
+    uint32_t board_occ, board_black, board_dame;
+    uint8_t player;
+    uint8_t looping;
+    uint32_t next_idx;
+    uint32_t parent_frame_idx; // UINT32_MAX for root
+    uint32_t move_from_parent; // Move index from parent
+    uint32_t current_hash;     // For verification
+};
 static void write_blob(FILE* f, const void* p, size_t n) { std::fwrite(p, 1, n, f); }
 static bool read_blob(FILE* f, void* p, size_t n) { return std::fread(p, 1, n, f) == n; }
 } // namespace
@@ -208,6 +217,75 @@ bool Traversal::save_checkpoint(const std::string& path) const {
     return true;
 }
 
+bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) const {
+    const std::string tmp = path + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+
+    // Modified header for compact format
+    CheckpointHeader H{};
+    H.magic[6] = '2'; // Change to TCHKPT2
+    H.version = 3;    // Compact format version
+    H.shard_count = static_cast<uint32_t>(loop_shards_.size());
+    H.game_count = game_count.load(std::memory_order_relaxed);
+    H.stack_size = work_stack_.size();
+    if (start_tp_.time_since_epoch().count() != 0) {
+        const auto now = std::chrono::steady_clock::now();
+        H.wall_ms_so_far = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_tp_).count();
+    }
+    write_blob(f, &H, sizeof(H));
+
+    // Save compact frames (no redundant move histories)
+    for (size_t i = 0; i < work_stack_.size(); ++i) {
+        const auto& fr = work_stack_[i];
+        CompactFrame cf{};
+        cf.board_occ = fr.game.board().occ_bits();
+        cf.board_black = fr.game.board().black_bits();
+        cf.board_dame = fr.game.board().dame_bits();
+        cf.player = static_cast<uint8_t>(fr.game.player());
+        cf.looping = fr.game.is_looping() ? 1 : 0;
+        cf.next_idx = fr.next_idx;
+        cf.current_hash = static_cast<uint32_t>(fr.game.board().hash());
+
+        // Find parent frame by traversing backwards
+        cf.parent_frame_idx = UINT32_MAX; // Root frame
+        cf.move_from_parent = 0;
+
+        const auto& current_hist = fr.game.get_move_sequence();
+        if (current_hist.size() >= 2) { // Has at least one move
+            cf.move_from_parent = static_cast<uint32_t>(current_hist.back());
+            // Simple parent detection - could be optimized further
+            for (int j = static_cast<int>(i) - 1; j >= 0; --j) {
+                const auto& candidate_hist = work_stack_[j].game.get_move_sequence();
+                if (candidate_hist.size() == current_hist.size() - 2) {
+                    cf.parent_frame_idx = static_cast<uint32_t>(j);
+                    break;
+                }
+            }
+        }
+        write_blob(f, &cf, sizeof(cf));
+    }
+
+    // Save loop detection database
+    for (const auto& shard : loop_shards_) {
+        const uint64_t n = shard.set.size();
+        write_blob(f, &n, sizeof(n));
+        for (auto h : shard.set) {
+            uint64_t hv = static_cast<uint64_t>(h);
+            write_blob(f, &hv, sizeof(hv));
+        }
+    }
+
+    std::fclose(f);
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::filesystem::remove(tmp);
+        return false;
+    }
+    return true;
+}
+
 bool Traversal::load_checkpoint(const std::string& path) {
     FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
@@ -275,6 +353,99 @@ bool Traversal::load_checkpoint(const std::string& path) {
             shard.set.insert(static_cast<std::size_t>(hv));
         }
     }
+    game_count.store(H.game_count, std::memory_order_relaxed);
+    std::fclose(f);
+    start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
+    return true;
+}
+
+bool Traversal::load_checkpoint_compact(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+
+    CheckpointHeader H{};
+    if (!read_blob(f, &H, sizeof(H))) {
+        std::fclose(f);
+        return false;
+    }
+
+    // Check for compact format (TCHKPT2)
+    if (std::string_view(H.magic, 7) != "TCHKPT2" || H.version != 3) {
+        std::fclose(f);
+        return false;
+    }
+
+    // Load compact frames
+    std::vector<CompactFrame> compact_frames;
+    compact_frames.resize(H.stack_size);
+    for (uint64_t i = 0; i < H.stack_size; ++i) {
+        if (!read_blob(f, &compact_frames[i], sizeof(CompactFrame))) {
+            std::fclose(f);
+            return false;
+        }
+    }
+
+    // Reconstruct full frames with move histories
+    work_stack_.clear();
+    work_stack_.reserve(H.stack_size);
+
+    for (size_t i = 0; i < compact_frames.size(); ++i) {
+        const auto& cf = compact_frames[i];
+
+        // Create game with board state
+        Game g;
+        Board b;
+        b.set_from_masks(cf.board_occ, cf.board_black, cf.board_dame);
+        g.set_board(b);
+        g.set_player(static_cast<PieceColor>(cf.player));
+        g.set_looping(cf.looping != 0);
+
+        // Reconstruct move history by tracing back to root
+        std::vector<std::size_t> history;
+        if (cf.parent_frame_idx != UINT32_MAX && cf.parent_frame_idx < i) {
+            // Get parent's history and append this move
+            const auto& parent_frame = work_stack_[cf.parent_frame_idx];
+            history = parent_frame.game.get_move_sequence();
+            // Move sequence format: [hash, move_idx, hash, move_idx, ...]
+            // Add the move index and resulting hash
+            history.push_back(cf.move_from_parent);
+            history.push_back(cf.current_hash);
+        } else {
+            // This is a root frame or direct child of root
+            if (cf.move_from_parent != 0) {
+                // Direct child of root
+                history.push_back(Game().board().hash()); // Root hash
+                history.push_back(cf.move_from_parent);   // Move index
+                history.push_back(cf.current_hash);       // Resulting hash
+            } else {
+                // Root frame - just has initial hash
+                history.push_back(cf.current_hash);
+            }
+        }
+
+        g.set_move_sequence(std::move(history));
+        work_stack_.push_back(Frame{std::move(g), cf.next_idx});
+    }
+
+    // Load loop detection database
+    for (auto& shard : loop_shards_) {
+        uint64_t n = 0;
+        if (!read_blob(f, &n, sizeof(n))) {
+            std::fclose(f);
+            return false;
+        }
+        std::unique_lock lk(shard.mtx);
+        shard.set.clear();
+        for (uint64_t i = 0; i < n; ++i) {
+            uint64_t hv;
+            if (!read_blob(f, &hv, sizeof(hv))) {
+                std::fclose(f);
+                return false;
+            }
+            shard.set.insert(static_cast<std::size_t>(hv));
+        }
+    }
+
     game_count.store(H.game_count, std::memory_order_relaxed);
     std::fclose(f);
     start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
