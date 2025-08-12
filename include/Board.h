@@ -64,6 +64,7 @@ class Board {
     [[nodiscard]] static Board copy(const Board& other) { return Board{other}; }
 
     [[nodiscard]] std::size_t hash() const noexcept;
+    [[nodiscard]] operator std::size_t() const noexcept { return hash(); }
     Board& operator=(const Board&) = default;
     Board& operator=(Board&&) noexcept = default;
 

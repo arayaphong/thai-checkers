@@ -42,7 +42,7 @@ std::string board_to_string(const Board& board) {
 }
 
 Game::Game() : current_player(PieceColor::WHITE), current_board(Board::setup()) {
-    board_move_sequence.push_back(current_board.hash());
+    board_move_sequence.push_back(current_board);
     // Track initial state for repetition detection
     seen_states_.clear();
     seen_states_.insert(state_key());
@@ -142,7 +142,7 @@ Board Game::execute_move(const Move& move) {
     for (const auto& pos : captured) { new_board.remove_piece(pos); }
 
     // Keep track of the new board state
-    board_move_sequence.push_back(new_board.hash());
+    board_move_sequence.push_back(new_board);
 
     // Update current player and board state
     current_board = new_board;

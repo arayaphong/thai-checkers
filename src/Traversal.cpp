@@ -64,7 +64,7 @@ static bool read_blob(FILE* f, void* p, size_t n) { return std::fread(p, 1, n, f
 void Traversal::emit_result(const Game& game) {
     const auto& history = game.get_move_sequence();
     const std::size_t move_history_count = history.size() / 2;
-    if (game.is_looping()) record_loop(game.board().hash());
+    if (game.is_looping()) record_loop(game.board());
     const std::size_t total = game_count.fetch_add(1, std::memory_order_relaxed);
     std::function<void(const ResultEvent&)> cb_copy;
     {
@@ -96,7 +96,7 @@ void Traversal::traverse_iterative(Game root) {
     work_stack_.push_back(Frame{std::move(root), 0});
     while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
         Frame& f = work_stack_.back();
-        const auto h = f.game.board().hash();
+        const std::size_t h{f.game.board()};
 
         // Optimized loop detection
         const bool skip_loop_check = high_performance_mode_ && work_stack_.size() < 10 && memory_speed_ratio_ > 0.7;
@@ -132,7 +132,7 @@ bool Traversal::step_one() {
     if (work_stack_.empty()) return false;
     if (stop_.load(std::memory_order_relaxed)) return false;
     Frame& f = work_stack_.back();
-    const auto h = f.game.board().hash();
+    const std::size_t h{f.game.board()};
     if (loop_seen(h)) {
         work_stack_.pop_back();
         return !work_stack_.empty();
@@ -157,7 +157,7 @@ bool Traversal::step_one() {
 void Traversal::run_from_work_stack() {
     while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
         Frame& f = work_stack_.back();
-        const auto h = f.game.board().hash();
+        const std::size_t h{f.game.board()};
         if (loop_seen(h)) {
             work_stack_.pop_back();
             continue;
@@ -257,7 +257,7 @@ bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) 
         cf.player = static_cast<uint8_t>(fr.game.player());
         cf.looping = fr.game.is_looping() ? 1 : 0;
         cf.next_idx = fr.next_idx;
-        cf.current_hash = static_cast<uint32_t>(fr.game.board().hash());
+        cf.current_hash = static_cast<uint32_t>(std::size_t{fr.game.board()});
 
         // Find parent frame by traversing backwards
         cf.parent_frame_idx = UINT32_MAX; // Root frame
@@ -427,9 +427,9 @@ bool Traversal::load_checkpoint_compact(const std::string& path) {
             // This is a root frame or direct child of root
             if (cf.move_from_parent != 0) {
                 // Direct child of root
-                history.push_back(Game().board().hash()); // Root hash
-                history.push_back(cf.move_from_parent);   // Move index
-                history.push_back(cf.current_hash);       // Resulting hash
+                history.push_back(Game().board());      // Root hash
+                history.push_back(cf.move_from_parent); // Move index
+                history.push_back(cf.current_hash);     // Resulting hash
             } else {
                 // Root frame - just has initial hash
                 history.push_back(cf.current_hash);
@@ -554,7 +554,7 @@ void Traversal::traverse_impl(const Game& game, int depth) {
     const std::size_t move_count = game.move_count();
 
     // Fast-path check in sharded loop DB with performance optimization
-    const auto h = game.board().hash();
+    const std::size_t h{game.board()};
     const bool skip_loop_check = high_performance_mode_ && depth < 6 && memory_speed_ratio_ > 0.7;
 
     if (!skip_loop_check && loop_seen(h)) return;

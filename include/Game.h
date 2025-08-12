@@ -36,7 +36,7 @@ class Game {
     std::unordered_set<std::size_t> seen_states_{}; // key = board hash ^ mix(player)
     bool game_over_ = false;
     [[nodiscard]] std::size_t state_key() const noexcept {
-        return current_board.hash() ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
+        return current_board ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
     }
 
   public:
