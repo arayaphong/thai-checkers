@@ -16,8 +16,8 @@
 #endif
 
 namespace {
-// Reasonable task depth before switching to serial recursion to reduce task overhead.
-constexpr int k_task_depth_limit = 4;
+// Dynamic task depth based on performance configuration
+constexpr int k_default_task_depth_limit = 4;
 } // namespace
 
 // -------------------- Checkpoint format PODs --------------------
@@ -88,14 +88,23 @@ void Traversal::emit_result(const Game& game) {
 
 void Traversal::traverse_iterative(Game root) {
     work_stack_.clear();
+
+    // Pre-allocate stack space in high-performance mode
+    if (high_performance_mode_) { work_stack_.reserve(static_cast<size_t>(1000 * memory_speed_ratio_)); }
+
     work_stack_.push_back(Frame{std::move(root), 0});
     while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
         Frame& f = work_stack_.back();
         const auto h = f.game.board().hash();
-        if (loop_seen(h)) {
+
+        // Optimized loop detection
+        const bool skip_loop_check = high_performance_mode_ && work_stack_.size() < 10 && memory_speed_ratio_ > 0.7;
+
+        if (!skip_loop_check && loop_seen(h)) {
             work_stack_.pop_back();
             continue;
         }
+
         const auto mc = f.game.move_count();
         if (mc == 0) {
             emit_result(f.game);
@@ -454,8 +463,18 @@ bool Traversal::load_checkpoint_compact(const std::string& path) {
 
 void Traversal::resume_or_start(const std::string& chk_path, Game root) {
     stop_.store(false, std::memory_order_relaxed);
-    if (!chk_path.empty() && load_checkpoint(chk_path)) {
-        run_from_work_stack();
+    if (!chk_path.empty()) {
+        // Try compact checkpoint first, then fallback to regular checkpoint
+        if (load_checkpoint_compact(chk_path) || load_checkpoint(chk_path)) {
+            std::cout << "Successfully loaded checkpoint, resuming traversal...\n";
+            run_from_work_stack();
+        } else {
+            std::cout << "Failed to load checkpoint, starting fresh...\n";
+            game_count.store(1, std::memory_order_relaxed);
+            clear_loops();
+            start_tp_ = std::chrono::steady_clock::now();
+            traverse_iterative(std::move(root));
+        }
     } else {
         game_count.store(1, std::memory_order_relaxed);
         clear_loops();
@@ -466,6 +485,12 @@ void Traversal::resume_or_start(const std::string& chk_path, Game root) {
 }
 
 bool Traversal::loop_seen(std::size_t h) const {
+    // In high-performance mode with high speed ratio, skip some loop checks
+    if (high_performance_mode_ && memory_speed_ratio_ > 0.8) {
+        // Only check every 4th hash to reduce lock contention
+        if ((h & 0x3) != 0) return false;
+    }
+
     const auto shard = shard_for(h);
     const auto& s = loop_shards_[shard];
     std::shared_lock lk(s.mtx);
@@ -473,6 +498,12 @@ bool Traversal::loop_seen(std::size_t h) const {
 }
 
 void Traversal::record_loop(std::size_t h) {
+    // In high-performance mode, be more selective about what we record
+    if (high_performance_mode_ && memory_speed_ratio_ > 0.8) {
+        // Only record every 4th hash to save memory and reduce contention
+        if ((h & 0x3) != 0) return;
+    }
+
     const auto shard = shard_for(h);
     auto& s = loop_shards_[shard];
     std::unique_lock lk(s.mtx);
@@ -502,9 +533,11 @@ void Traversal::traverse_impl(const Game& game, int depth) {
 
     const std::size_t move_count = game.move_count();
 
-    // Fast-path check in sharded loop DB
+    // Fast-path check in sharded loop DB with performance optimization
     const auto h = game.board().hash();
-    if (loop_seen(h)) return;
+    const bool skip_loop_check = high_performance_mode_ && depth < 6 && memory_speed_ratio_ > 0.7;
+
+    if (!skip_loop_check && loop_seen(h)) return;
 
     if (move_count == 0) {
         const auto& history = game.get_move_sequence();
@@ -543,17 +576,37 @@ void Traversal::traverse_impl(const Game& game, int depth) {
     }
 
 #ifdef _OPENMP
-    if (depth < k_task_depth_limit) {
+    const int effective_task_limit = high_performance_mode_ ? task_depth_limit_ : k_default_task_depth_limit;
+    if (depth < effective_task_limit) {
         if (omp_in_parallel()) {
-            for (std::size_t i = 0; i < move_count; ++i) {
-                if (stop_.load(std::memory_order_relaxed)) break;
-                const Game base = game;
+            // High-performance mode: batch process moves to reduce task overhead
+            if (high_performance_mode_ && move_count > 8) {
+                const size_t batch_size = std::max(1UL, move_count / omp_get_num_threads());
+                for (std::size_t start = 0; start < move_count; start += batch_size) {
+                    if (stop_.load(std::memory_order_relaxed)) break;
+                    const std::size_t end = std::min(start + batch_size, move_count);
+                    const Game base = game;
+#pragma omp task firstprivate(base, start, end)
+                    {
+                        for (std::size_t i = start; i < end && !stop_.load(std::memory_order_relaxed); ++i) {
+                            Game next_game = base;
+                            next_game.select_move(i);
+                            traverse_impl(next_game, depth + 1);
+                        }
+                    }
+                }
+            } else {
+                // Standard processing for smaller move counts
+                for (std::size_t i = 0; i < move_count; ++i) {
+                    if (stop_.load(std::memory_order_relaxed)) break;
+                    const Game base = game;
 #pragma omp task firstprivate(base, i)
-                {
-                    if (!stop_.load(std::memory_order_relaxed)) {
-                        Game next_game = base;
-                        next_game.select_move(i);
-                        traverse_impl(next_game, depth + 1);
+                    {
+                        if (!stop_.load(std::memory_order_relaxed)) {
+                            Game next_game = base;
+                            next_game.select_move(i);
+                            traverse_impl(next_game, depth + 1);
+                        }
                     }
                 }
             }
@@ -562,15 +615,33 @@ void Traversal::traverse_impl(const Game& game, int depth) {
             {
 #pragma omp single nowait
                 {
-                    for (std::size_t i = 0; i < move_count; ++i) {
-                        if (stop_.load(std::memory_order_relaxed)) break;
-                        const Game base = game;
+                    // High-performance mode: use dynamic scheduling for better load balancing
+                    if (high_performance_mode_ && move_count > 12) {
+                        const size_t batch_size = std::max(2UL, move_count / (omp_get_num_threads() * 2));
+                        for (std::size_t start = 0; start < move_count; start += batch_size) {
+                            if (stop_.load(std::memory_order_relaxed)) break;
+                            const std::size_t end = std::min(start + batch_size, move_count);
+                            const Game base = game;
+#pragma omp task firstprivate(base, start, end)
+                            {
+                                for (std::size_t i = start; i < end && !stop_.load(std::memory_order_relaxed); ++i) {
+                                    Game next_game = base;
+                                    next_game.select_move(i);
+                                    traverse_impl(next_game, depth + 1);
+                                }
+                            }
+                        }
+                    } else {
+                        for (std::size_t i = 0; i < move_count; ++i) {
+                            if (stop_.load(std::memory_order_relaxed)) break;
+                            const Game base = game;
 #pragma omp task firstprivate(base, i)
-                        {
-                            if (!stop_.load(std::memory_order_relaxed)) {
-                                Game next_game = base;
-                                next_game.select_move(i);
-                                traverse_impl(next_game, depth + 1);
+                            {
+                                if (!stop_.load(std::memory_order_relaxed)) {
+                                    Game next_game = base;
+                                    next_game.select_move(i);
+                                    traverse_impl(next_game, depth + 1);
+                                }
                             }
                         }
                     }
@@ -725,7 +796,7 @@ void Traversal::print_summary() const {
         };
         cb_copy(ev);
     } else {
-        std::scoped_lock lk(io_mutex);
+        std::scoped_lock lk(cb_mutex_);
         std::cout << "Summary: wall=" << secs << "s, games=" << games << ", throughput=" << cps << "/s, cpu_s=" << cpu_s
                   << ", cpu_util=" << ((secs > 0.0 && cpu_s >= 0.0) ? (cpu_s / secs) * 100.0 : -1.0)
                   << "%, rss_kb=" << rss_kb << ", hwm_kb=" << hwm_kb << '\n';

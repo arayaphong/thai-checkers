@@ -11,6 +11,7 @@
 #include <optional>
 #include <vector>
 #include <chrono>
+#include <algorithm>
 #include "Game.h"
 
 class Traversal {
@@ -64,6 +65,12 @@ class Traversal {
         progress_cb_ = std::move(cb);
     }
     void set_progress_interval(std::chrono::milliseconds interval) { progress_interval_ms_ = interval; }
+
+    // Performance optimization controls
+    void set_high_performance_mode(bool enabled) { high_performance_mode_ = enabled; }
+    void set_memory_vs_speed_ratio(double ratio) { memory_speed_ratio_ = std::clamp(ratio, 0.0, 1.0); }
+    void set_loop_detection_aggressive(bool enabled) { aggressive_loop_detection_ = enabled; }
+    void set_task_depth_limit(int limit) { task_depth_limit_ = limit; }
 
     // Checkpoint / resume API
     struct Frame {
@@ -140,6 +147,9 @@ class Traversal {
     // Clear all loop-detection shards
     void clear_loops();
 
-    // Serialize std::cout output to keep lines intact
-    mutable std::mutex io_mutex;
+    // Performance optimization settings
+    bool high_performance_mode_{false};
+    double memory_speed_ratio_{0.5}; // 0.0 = max memory saving, 1.0 = max speed
+    bool aggressive_loop_detection_{false};
+    int task_depth_limit_{4};
 };
