@@ -22,6 +22,9 @@ class Traversal {
     // Run traversal for given wall-clock duration (default: 10s) and then stop, emitting a summary
     // via callback if set, otherwise printing to stdout.
     void traverse_for(std::chrono::milliseconds duration = std::chrono::seconds(10), const Game& game = Game());
+    // Continue traversal preserving existing session state (for resume scenarios)
+    void traverse_for_continue(std::chrono::milliseconds duration = std::chrono::seconds(10),
+                               const Game& game = Game());
 
     // Controls
     void reset();                  // reset counters and internal loop DB, clear stop flag
@@ -42,7 +45,9 @@ class Traversal {
     };
     struct SummaryEvent {
         double wall_seconds;
-        std::size_t games;
+        std::size_t games;          // current session games processed
+        std::size_t previous_games; // games from previous sessions (checkpoint)
+        std::size_t total_games;    // total cumulative games (final game ID)
         double throughput_games_per_sec;
         double cpu_seconds;      // -1 if unavailable
         double cpu_util_percent; // may exceed 100% on multi-core
@@ -102,6 +107,8 @@ class Traversal {
   private:
     // Counter for completed games; updated concurrently
     std::atomic<std::size_t> game_count{1};
+    std::size_t session_start_count{0};  // games count at session start (for tracking session progress)
+    std::size_t global_session_total{0}; // cumulative total across all sessions
 
     // Sharded hash sets for loop detection to reduce lock contention under parallel load
     static constexpr std::size_t k_shard_bits = 6; // 64 shards

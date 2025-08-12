@@ -79,14 +79,34 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     // Subscribe to Traversal events only; no local aggregation
     traversal.set_result_callback([&](const Traversal::ResultEvent& /*ev*/) {
-        // Build score tree here
+        // TODO: Build score tree here
+        // const std::string winner_str = ev.winner.has_value()
+        //     ? std::to_string(static_cast<int>(*ev.winner))
+        //     : "none";
+        // std::string winner_label;
+        // if (!ev.winner) {
+        //     winner_label = "Draw";
+        // } else {
+        //     switch (static_cast<int>(*ev.winner)) {
+        //     case 0: winner_label = "Black"; break;
+        //     case 1: winner_label = "White"; break;
+        //     default: winner_label = std::format("unknown({})", static_cast<int>(*ev.winner)); break;
+        //     }
+        // }
+
+        // std::cout << std::format("[result] game_id: {}, winner: {}, moves: {}\n",
+        //               ev.game_id, winner_label,
+        //               ev.move_history.size());
     });
 
     // Enhanced summary callback with checkpoint info
     traversal.set_summary_callback([&](const Traversal::SummaryEvent& s) {
-        std::cout << std::format("\n===== Final Summary =====\n");
+        // Always show as Current Session Summary since checkpoint resume summary is skipped
+        std::cout << std::format("\n===== Current Session Summary =====\n");
         std::cout << std::format("Wall time: {:.3f}s\n", s.wall_seconds);
-        std::cout << std::format("Games: {}\n", s.games);
+        std::cout << std::format("Previous games: {}\n", s.previous_games);
+        std::cout << std::format("Current games: {}\n", s.games);
+        std::cout << std::format("Total games: {}\n", s.total_games);
         std::cout << std::format("Throughput: {:.2f} games/s\n", s.throughput_games_per_sec);
         if (s.cpu_seconds >= 0.0) {
             std::cout << std::format("CPU time: {:.3f}s\n", s.cpu_seconds);
@@ -173,7 +193,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     if (resume_mode && has_checkpoint) {
         std::cout << std::format("Resuming from checkpoint: {} ({}ms duration)\n", checkpoint_path, ms);
         traversal.resume_or_start(checkpoint_path, Game());
-        traversal.traverse_for(std::chrono::milliseconds(ms), Game());
+        traversal.traverse_for_continue(std::chrono::milliseconds(ms), Game());
     } else {
         std::cout << std::format("Starting fresh traversal ({}ms duration)\n", ms);
         traversal.traverse_for(std::chrono::milliseconds(ms));

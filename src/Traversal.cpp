@@ -27,6 +27,7 @@ struct CheckpointHeader {
     uint32_t version{2};
     uint32_t shard_count{0};
     uint64_t game_count{0};
+    uint64_t global_session_total{0}; // cumulative total across all sessions
     uint64_t stack_size{0};
     int64_t wall_ms_so_far{0};
 };
@@ -185,6 +186,7 @@ bool Traversal::save_checkpoint(const std::string& path) const {
     CheckpointHeader H{};
     H.shard_count = static_cast<uint32_t>(loop_shards_.size());
     H.game_count = game_count.load(std::memory_order_relaxed);
+    H.global_session_total = global_session_total;
     H.stack_size = work_stack_.size();
     if (start_tp_.time_since_epoch().count() != 0) {
         const auto now = std::chrono::steady_clock::now();
@@ -237,6 +239,7 @@ bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) 
     H.version = 3;    // Compact format version
     H.shard_count = static_cast<uint32_t>(loop_shards_.size());
     H.game_count = game_count.load(std::memory_order_relaxed);
+    H.global_session_total = global_session_total;
     H.stack_size = work_stack_.size();
     if (start_tp_.time_since_epoch().count() != 0) {
         const auto now = std::chrono::steady_clock::now();
@@ -363,6 +366,7 @@ bool Traversal::load_checkpoint(const std::string& path) {
         }
     }
     game_count.store(H.game_count, std::memory_order_relaxed);
+    global_session_total = H.global_session_total;
     std::fclose(f);
     start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
     return true;
@@ -454,8 +458,8 @@ bool Traversal::load_checkpoint_compact(const std::string& path) {
             shard.set.insert(static_cast<std::size_t>(hv));
         }
     }
-
     game_count.store(H.game_count, std::memory_order_relaxed);
+    global_session_total = H.global_session_total;
     std::fclose(f);
     start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
     return true;
@@ -466,22 +470,38 @@ void Traversal::resume_or_start(const std::string& chk_path, Game root) {
     if (!chk_path.empty()) {
         // Try compact checkpoint first, then fallback to regular checkpoint
         if (load_checkpoint_compact(chk_path) || load_checkpoint(chk_path)) {
+            // Store the global total from checkpoint as session start
+            session_start_count = global_session_total; // Use the stored cumulative total
             std::cout << "Successfully loaded checkpoint, resuming traversal...\n";
             run_from_work_stack();
         } else {
             std::cout << "Failed to load checkpoint, starting fresh...\n";
             game_count.store(1, std::memory_order_relaxed);
+            global_session_total = 0; // Fresh start
+            session_start_count = 0;  // Fresh start
             clear_loops();
             start_tp_ = std::chrono::steady_clock::now();
             traverse_iterative(std::move(root));
         }
     } else {
         game_count.store(1, std::memory_order_relaxed);
+        global_session_total = 0; // Fresh start
+        session_start_count = 0;  // Fresh start
         clear_loops();
         start_tp_ = std::chrono::steady_clock::now();
         traverse_iterative(std::move(root));
     }
-    print_summary();
+
+    // Update global total after this session
+    const std::size_t current_total = game_count.load(std::memory_order_relaxed) - 1;
+    const std::size_t session_games = current_total - session_start_count;
+    global_session_total = session_start_count + session_games; // Store the cumulative total
+
+    // Skip printing summary for checkpoint resume - the next session will show all relevant info
+    // print_summary();
+
+    // After checkpoint resume completes, update the baseline for next session
+    session_start_count = global_session_total; // Next session starts from this new total
 }
 
 bool Traversal::loop_seen(std::size_t h) const {
@@ -703,7 +723,51 @@ void Traversal::traverse_for(std::chrono::milliseconds duration, const Game& gam
     // fresh run state
     stop_.store(false, std::memory_order_relaxed);
     game_count.store(1, std::memory_order_relaxed);
+    global_session_total = 0; // Fresh start
+    session_start_count = 0;  // Fresh start
     clear_loops();
+    start_tp_ = std::chrono::steady_clock::now();
+    deadline_tp_ = start_tp_ + duration;
+
+    // Start a watchdog thread that flips stop_ at deadline and emits progress periodically
+    std::thread watchdog([this]() {
+        while (!stop_.load(std::memory_order_relaxed)) {
+            if (std::chrono::steady_clock::now() >= deadline_tp_) {
+                stop_.store(true, std::memory_order_relaxed);
+                break;
+            }
+            static thread_local auto last = std::chrono::steady_clock::now();
+            const auto now = std::chrono::steady_clock::now();
+            if ((now - last) >= progress_interval_ms_) {
+                ProgressEvent ev{.games = game_count.load(std::memory_order_relaxed) - 1};
+                // Copy cb under lock to avoid races
+                std::function<void(const ProgressEvent&)> cb_copy;
+                {
+                    std::scoped_lock lock(cb_mutex_);
+                    cb_copy = progress_cb_;
+                }
+                if (cb_copy) cb_copy(ev);
+                last = now;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    });
+
+    // Run traversal (may spawn OpenMP tasks internally)
+    traverse_impl(game, 0);
+
+    // Ensure stop flag is set and join watchdog
+    stop_.store(true, std::memory_order_relaxed);
+    if (watchdog.joinable()) watchdog.join();
+
+    print_summary();
+}
+
+void Traversal::traverse_for_continue(std::chrono::milliseconds duration, const Game& game) {
+    // Continue from existing state (preserve session counters for resume scenarios)
+    stop_.store(false, std::memory_order_relaxed);
+    // NOTE: Do NOT reset game_count, global_session_total, or session_start_count
+    // Keep existing loop detection state as well
     start_tp_ = std::chrono::steady_clock::now();
     deadline_tp_ = start_tp_ + duration;
 
@@ -772,9 +836,11 @@ double Traversal::process_cpu_seconds() {
 void Traversal::print_summary() const {
     const auto end_tp = std::chrono::steady_clock::now();
     const auto wall_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_tp - start_tp_).count();
-    const std::size_t games = game_count.load(std::memory_order_relaxed) - 1; // ids started at 1
+    const std::size_t current_games = game_count.load(std::memory_order_relaxed) - 1; // ids started at 1
+    const std::size_t session_games = current_games - session_start_count;
+    const std::size_t total_cumulative = global_session_total + session_games; // Always cumulative: previous + current
     const double secs = wall_ms / 1000.0;
-    const double cps = secs > 0.0 ? (games / secs) : 0.0;
+    const double cps = secs > 0.0 ? (session_games / secs) : 0.0; // throughput based on session games
     const double cpu_s = process_cpu_seconds();
     const long rss_kb = proc_status_kb("VmRSS:");
     const long hwm_kb = proc_status_kb("VmHWM:");
@@ -787,7 +853,9 @@ void Traversal::print_summary() const {
     if (cb_copy) {
         SummaryEvent ev{
             .wall_seconds = secs,
-            .games = games,
+            .games = session_games,                // current session games processed
+            .previous_games = session_start_count, // baseline for this session (what we started from)
+            .total_games = total_cumulative,       // total cumulative games: previous + current
             .throughput_games_per_sec = cps,
             .cpu_seconds = cpu_s,
             .cpu_util_percent = (secs > 0.0 && cpu_s >= 0.0) ? (cpu_s / secs) * 100.0 : -1.0,
@@ -797,7 +865,9 @@ void Traversal::print_summary() const {
         cb_copy(ev);
     } else {
         std::scoped_lock lk(cb_mutex_);
-        std::cout << "Summary: wall=" << secs << "s, games=" << games << ", throughput=" << cps << "/s, cpu_s=" << cpu_s
+        std::cout << "Summary: wall=" << secs << "s, session_games=" << session_games
+                  << ", previous_games=" << global_session_total << ", total_games=" << total_cumulative
+                  << ", throughput=" << cps << "/s, cpu_s=" << cpu_s
                   << ", cpu_util=" << ((secs > 0.0 && cpu_s >= 0.0) ? (cpu_s / secs) * 100.0 : -1.0)
                   << "%, rss_kb=" << rss_kb << ", hwm_kb=" << hwm_kb << '\n';
     }
