@@ -8,6 +8,9 @@
 #include <cstring>
 #include <sys/resource.h>
 #include <thread>
+#include <filesystem>
+#include <cstdint>
+#include <utility>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -16,6 +19,280 @@ namespace {
 // Reasonable task depth before switching to serial recursion to reduce task overhead.
 constexpr int k_task_depth_limit = 4;
 } // namespace
+
+// -------------------- Checkpoint format PODs --------------------
+namespace {
+struct CheckpointHeader {
+    char magic[8]{'T', 'C', 'H', 'K', 'P', 'T', '1'}; // "TCHKPT1"\0
+    uint32_t version{2};
+    uint32_t shard_count{0};
+    uint64_t game_count{0};
+    uint64_t stack_size{0};
+    int64_t wall_ms_so_far{0};
+};
+struct BoardBlob {
+    uint32_t occ, black, dame;
+    uint8_t player; // duplicated in GameBlob too
+    uint8_t pad[3]{};
+};
+struct GameBlob {
+    BoardBlob board;
+    uint8_t player_to_move;
+    uint8_t looping; // 1 if looping terminal
+    uint16_t reserved{0};
+    uint32_t history_len; // number of size_t entries (stored as 64-bit if version>=2, else legacy 32-bit)
+};
+struct FrameBlob {
+    GameBlob game;
+    uint32_t next_idx;
+};
+static void write_blob(FILE* f, const void* p, size_t n) { std::fwrite(p, 1, n, f); }
+static bool read_blob(FILE* f, void* p, size_t n) { return std::fread(p, 1, n, f) == n; }
+} // namespace
+
+// -------------------- Iterative traversal helpers --------------------
+void Traversal::emit_result(const Game& game) {
+    const auto& history = game.get_move_sequence();
+    const std::size_t move_history_count = history.size() / 2;
+    if (game.is_looping()) record_loop(game.board().hash());
+    const std::size_t total = game_count.fetch_add(1, std::memory_order_relaxed);
+    std::function<void(const ResultEvent&)> cb_copy;
+    {
+        std::scoped_lock lock(cb_mutex_);
+        cb_copy = result_cb_;
+    }
+    if (!cb_copy) return;
+    std::vector<std::size_t> moves_only;
+    moves_only.reserve(move_history_count);
+    for (std::size_t i = 1; i < history.size(); i += 2) moves_only.push_back(history[i]);
+    ResultEvent ev{
+        .game_id = total,
+        .looping = game.is_looping(),
+        .winner = game.is_looping() ? std::nullopt
+                                    : std::optional<PieceColor>(
+                                          (game.player() == PieceColor::BLACK) ? PieceColor::WHITE : PieceColor::BLACK),
+        .move_history = std::move(moves_only),
+        .history = history,
+    };
+    cb_copy(ev);
+}
+
+void Traversal::traverse_iterative(Game root) {
+    work_stack_.clear();
+    work_stack_.push_back(Frame{std::move(root), 0});
+    while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
+        Frame& f = work_stack_.back();
+        const auto h = f.game.board().hash();
+        if (loop_seen(h)) {
+            work_stack_.pop_back();
+            continue;
+        }
+        const auto mc = f.game.move_count();
+        if (mc == 0) {
+            emit_result(f.game);
+            work_stack_.pop_back();
+            continue;
+        }
+        if (f.next_idx >= mc) {
+            work_stack_.pop_back();
+            continue;
+        }
+        const auto idx = f.next_idx++;
+        Game child = f.game; // copy
+        child.select_move(idx);
+        work_stack_.push_back(Frame{std::move(child), 0});
+    }
+}
+
+void Traversal::start_root_only(Game root) {
+    work_stack_.clear();
+    work_stack_.push_back(Frame{std::move(root), 0});
+}
+
+bool Traversal::step_one() {
+    if (work_stack_.empty()) return false;
+    if (stop_.load(std::memory_order_relaxed)) return false;
+    Frame& f = work_stack_.back();
+    const auto h = f.game.board().hash();
+    if (loop_seen(h)) {
+        work_stack_.pop_back();
+        return !work_stack_.empty();
+    }
+    const auto mc = f.game.move_count();
+    if (mc == 0) {
+        emit_result(f.game);
+        work_stack_.pop_back();
+        return !work_stack_.empty();
+    }
+    if (f.next_idx >= mc) {
+        work_stack_.pop_back();
+        return !work_stack_.empty();
+    }
+    const auto idx = f.next_idx++;
+    Game child = f.game;
+    child.select_move(idx);
+    work_stack_.push_back(Frame{std::move(child), 0});
+    return true;
+}
+
+void Traversal::run_from_work_stack() {
+    while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
+        Frame& f = work_stack_.back();
+        const auto h = f.game.board().hash();
+        if (loop_seen(h)) {
+            work_stack_.pop_back();
+            continue;
+        }
+        const auto mc = f.game.move_count();
+        if (mc == 0) {
+            emit_result(f.game);
+            work_stack_.pop_back();
+            continue;
+        }
+        if (f.next_idx >= mc) {
+            work_stack_.pop_back();
+            continue;
+        }
+        const auto idx = f.next_idx++;
+        Game child = f.game;
+        child.select_move(idx);
+        work_stack_.push_back(Frame{std::move(child), 0});
+    }
+}
+
+bool Traversal::save_checkpoint(const std::string& path) const {
+    const std::string tmp = path + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+    CheckpointHeader H{};
+    H.shard_count = static_cast<uint32_t>(loop_shards_.size());
+    H.game_count = game_count.load(std::memory_order_relaxed);
+    H.stack_size = work_stack_.size();
+    if (start_tp_.time_since_epoch().count() != 0) {
+        const auto now = std::chrono::steady_clock::now();
+        H.wall_ms_so_far = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_tp_).count();
+    }
+    write_blob(f, &H, sizeof(H));
+    for (const auto& fr : work_stack_) {
+        FrameBlob fb{};
+        fb.game.board.occ = fr.game.board().occ_bits();
+        fb.game.board.black = fr.game.board().black_bits();
+        fb.game.board.dame = fr.game.board().dame_bits();
+        fb.game.board.player = static_cast<uint8_t>(fr.game.player());
+        fb.game.player_to_move = fb.game.board.player;
+        fb.game.looping = fr.game.is_looping() ? 1 : 0;
+        const auto& hist = fr.game.get_move_sequence();
+        fb.game.history_len = static_cast<uint32_t>(hist.size());
+        fb.next_idx = fr.next_idx;
+        write_blob(f, &fb, sizeof(fb));
+        for (auto v : hist) {
+            uint64_t u = static_cast<uint64_t>(v);
+            write_blob(f, &u, sizeof(u));
+        }
+    }
+    for (const auto& shard : loop_shards_) {
+        const uint64_t n = shard.set.size();
+        write_blob(f, &n, sizeof(n));
+        for (auto h : shard.set) {
+            uint64_t hv = static_cast<uint64_t>(h);
+            write_blob(f, &hv, sizeof(hv));
+        }
+    }
+    std::fclose(f);
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {
+        std::filesystem::remove(tmp);
+        return false;
+    }
+    return true;
+}
+
+bool Traversal::load_checkpoint(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return false;
+    CheckpointHeader H{};
+    if (!read_blob(f, &H, sizeof(H))) {
+        std::fclose(f);
+        return false;
+    }
+    if (std::string_view(H.magic, 7) != "TCHKPT1") {
+        std::fclose(f);
+        return false;
+    }
+    work_stack_.clear();
+    work_stack_.reserve(H.stack_size);
+    for (uint64_t i = 0; i < H.stack_size; ++i) {
+        FrameBlob fb{};
+        if (!read_blob(f, &fb, sizeof(fb))) {
+            std::fclose(f);
+            return false;
+        }
+        Game g;
+        Board b;
+        b.set_from_masks(fb.game.board.occ, fb.game.board.black, fb.game.board.dame);
+        g.set_board(b);
+        g.set_player(static_cast<PieceColor>(fb.game.player_to_move));
+        g.set_looping(fb.game.looping != 0);
+        std::vector<std::size_t> hist;
+        hist.resize(fb.game.history_len);
+        if (H.version >= 2) {
+            for (uint32_t k = 0; k < fb.game.history_len; ++k) {
+                uint64_t v;
+                if (!read_blob(f, &v, sizeof(v))) {
+                    std::fclose(f);
+                    return false;
+                }
+                hist[k] = static_cast<std::size_t>(v);
+            }
+        } else { // legacy v1 (32-bit truncation)
+            for (uint32_t k = 0; k < fb.game.history_len; ++k) {
+                uint32_t v;
+                if (!read_blob(f, &v, sizeof(v))) {
+                    std::fclose(f);
+                    return false;
+                }
+                hist[k] = static_cast<std::size_t>(v);
+            }
+        }
+        g.set_move_sequence(std::move(hist));
+        work_stack_.push_back(Frame{std::move(g), fb.next_idx});
+    }
+    for (auto& shard : loop_shards_) {
+        uint64_t n = 0;
+        if (!read_blob(f, &n, sizeof(n))) {
+            std::fclose(f);
+            return false;
+        }
+        std::unique_lock lk(shard.mtx);
+        shard.set.clear();
+        for (uint64_t i = 0; i < n; ++i) {
+            uint64_t hv;
+            if (!read_blob(f, &hv, sizeof(hv))) {
+                std::fclose(f);
+                return false;
+            }
+            shard.set.insert(static_cast<std::size_t>(hv));
+        }
+    }
+    game_count.store(H.game_count, std::memory_order_relaxed);
+    std::fclose(f);
+    start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
+    return true;
+}
+
+void Traversal::resume_or_start(const std::string& chk_path, Game root) {
+    stop_.store(false, std::memory_order_relaxed);
+    if (!chk_path.empty() && load_checkpoint(chk_path)) {
+        run_from_work_stack();
+    } else {
+        game_count.store(1, std::memory_order_relaxed);
+        clear_loops();
+        start_tp_ = std::chrono::steady_clock::now();
+        traverse_iterative(std::move(root));
+    }
+    print_summary();
+}
 
 bool Traversal::loop_seen(std::size_t h) const {
     const auto shard = shard_for(h);

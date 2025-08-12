@@ -116,7 +116,8 @@ if(BUILD_TESTING)
 
     # Selector deterministic tests
     add_executable(selector_tests
-        src/tests/SelectorTest.cpp)
+        src/tests/SelectorTest.cpp
+        src/tests/CheckpointTest.cpp)
     target_link_libraries(selector_tests
         PRIVATE
             thai_checkers_lib

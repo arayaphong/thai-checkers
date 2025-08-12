@@ -65,6 +65,20 @@ class Traversal {
     }
     void set_progress_interval(std::chrono::milliseconds interval) { progress_interval_ms_ = interval; }
 
+    // Checkpoint / resume API
+    struct Frame {
+        Game game;
+        std::uint32_t next_idx{0};
+    };
+    bool save_checkpoint(const std::string& path) const;
+    bool load_checkpoint(const std::string& path);
+    void traverse_iterative(Game root); // single-thread iterative DFS (fills work_stack_)
+    void resume_or_start(const std::string& chk_path, Game root = Game());
+    void run_from_work_stack();      // continue using pre-populated work_stack_
+    void start_root_only(Game root); // initialize work stack with root only (no exploration)
+    bool step_one();                 // perform a single DFS expansion/result; returns false if finished
+    std::size_t pending_frames() const noexcept { return work_stack_.size(); }
+
   private:
     // Counter for completed games; updated concurrently
     std::atomic<std::size_t> game_count{1};
@@ -97,6 +111,10 @@ class Traversal {
     std::function<void(const SummaryEvent&)> summary_cb_;
     std::function<void(const ProgressEvent&)> progress_cb_;
     mutable std::mutex cb_mutex_;
+
+    // Iterative DFS state (only used for checkpoint-based traversal)
+    std::vector<Frame> work_stack_{};
+    void emit_result(const Game& game); // factored leaf handler for iterative path
 
     // Helpers for sharded loop database
     static constexpr std::size_t shard_for(std::size_t h) noexcept {

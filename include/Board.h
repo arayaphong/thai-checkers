@@ -81,6 +81,16 @@ class Board {
 
     [[nodiscard]] Pieces get_pieces(PieceColor color) const noexcept;
 
+    // --- Checkpoint / serialization support helpers ---
+    [[nodiscard]] std::uint32_t occ_bits() const noexcept { return occ_bits_; }
+    [[nodiscard]] std::uint32_t black_bits() const noexcept { return black_bits_; }
+    [[nodiscard]] std::uint32_t dame_bits() const noexcept { return dame_bits_; }
+    void set_from_masks(std::uint32_t occ, std::uint32_t black, std::uint32_t dame) noexcept {
+        occ_bits_ = occ;
+        black_bits_ = black;
+        dame_bits_ = dame;
+    }
+
   private:
     // Internal helpers
     [[nodiscard]] static constexpr std::uint32_t bit(std::size_t idx) noexcept {

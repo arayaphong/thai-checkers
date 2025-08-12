@@ -59,4 +59,17 @@ class Game {
     [[nodiscard]] const bool& is_looping() const noexcept { return game_over_; }
     [[nodiscard]] const Board& board() const noexcept { return current_board; }
     [[nodiscard]] PieceColor player() const noexcept { return current_player; }
+
+    // --- Checkpoint restore helpers (not part of normal gameplay API) ---
+    void set_board(Board b) noexcept {
+        current_board = std::move(b);
+        choices_dirty_ = true;
+    }
+    void set_player(PieceColor p) noexcept {
+        current_player = p;
+        choices_dirty_ = true;
+    }
+    void set_looping(bool v) noexcept { game_over_ = v; }
+    void set_move_sequence(std::vector<std::size_t> seq) { board_move_sequence = std::move(seq); }
+    void set_seen_states(std::unordered_set<std::size_t> seen) { seen_states_ = std::move(seen); }
 };
