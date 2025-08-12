@@ -1,19 +1,13 @@
 #include "Game.h"
 #include "Traversal.h"
-#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <format>
 #include <cstring>
-#include <csignal>
-#include <thread>
 #include <filesystem>
 
 namespace {
-volatile std::sig_atomic_t g_stop_flag = 0;
-extern "C" void on_stop_signal(int) { g_stop_flag = 1; }
-
 // Default checkpoint path
 const std::string CHECKPOINT_PATH = "thai_checkers_checkpoint.compact";
 } // namespace
@@ -48,8 +42,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
             std::cout << "  --checkpoint <path>    Use custom checkpoint file path\n";
             std::cout << "  -h, --help             Show this help message\n\n";
             std::cout << "Environment variables:\n";
-            std::cout << "  TRAVERSAL_MS=<ms>      Duration in milliseconds (default: 10000)\n";
-            std::cout << "  TRAVERSAL_MS=INF       Run indefinitely until SIGINT/SIGTERM\n\n";
+            std::cout << "  TRAVERSAL_MS=<ms>      Duration in milliseconds (default: 10000)\n\n";
             return 0;
         }
     }
@@ -78,25 +71,28 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     traversal.set_loop_detection_aggressive(false); // Skip some loop checks for speed
 
     // Subscribe to Traversal events only; no local aggregation
-    traversal.set_result_callback([&](const Traversal::ResultEvent& /*ev*/) {
+    traversal.set_result_callback([&](const Traversal::ResultEvent& ev) {
         // TODO: Build score tree here
-        // const std::string winner_str = ev.winner.has_value()
-        //     ? std::to_string(static_cast<int>(*ev.winner))
-        //     : "none";
-        // std::string winner_label;
-        // if (!ev.winner) {
-        //     winner_label = "Draw";
-        // } else {
-        //     switch (static_cast<int>(*ev.winner)) {
-        //     case 0: winner_label = "Black"; break;
-        //     case 1: winner_label = "White"; break;
-        //     default: winner_label = std::format("unknown({})", static_cast<int>(*ev.winner)); break;
-        //     }
-        // }
+        const std::string winner_str = ev.winner.has_value() ? std::to_string(static_cast<int>(*ev.winner)) : "none";
+        std::string winner_label;
+        if (!ev.winner) {
+            winner_label = "Draw";
+        } else {
+            switch (static_cast<int>(*ev.winner)) {
+            case 0:
+                winner_label = "Black";
+                break;
+            case 1:
+                winner_label = "White";
+                break;
+            default:
+                winner_label = std::format("unknown({})", static_cast<int>(*ev.winner));
+                break;
+            }
+        }
 
-        // std::cout << std::format("[result] game_id: {}, winner: {}, moves: {}\n",
-        //               ev.game_id, winner_label,
-        //               ev.move_history.size());
+        std::cout << std::format("[result] game_id: {}, winner: {}, moves: {}\n", ev.game_id, winner_label,
+                                 ev.move_history.size());
     });
 
     // Enhanced summary callback with checkpoint info
@@ -135,51 +131,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
         }
     });
 
-    // Signal handlers for graceful shutdown with checkpoint saving
-    std::signal(SIGINT, [](int) {
-        g_stop_flag = 1;
-        std::cout << "\nReceived interrupt signal, saving checkpoint...\n";
-    });
-    std::signal(SIGTERM, [](int) {
-        g_stop_flag = 1;
-        std::cout << "\nReceived termination signal, saving checkpoint...\n";
-    });
-
     long ms = 10000; // default to 10s if not set
     if (const char* ms_env = std::getenv("TRAVERSAL_MS"); ms_env && *ms_env) {
-        // Special value for infinite traversal
-        if (std::strcmp(ms_env, "INF") == 0 || std::strcmp(ms_env, "inf") == 0) {
-            // Install cooperative stop on SIGINT/SIGTERM
-            std::signal(SIGINT, on_stop_signal);
-            std::signal(SIGTERM, on_stop_signal);
-            std::thread stopper([&]() {
-                while (!g_stop_flag) std::this_thread::sleep_for(std::chrono::milliseconds(25));
-                std::cout << "\nStopping traversal and saving checkpoint...\n";
-                traversal.request_stop();
-            });
-
-            // Resume from checkpoint or start fresh
-            if (resume_mode && has_checkpoint) {
-                std::cout << std::format("Resuming from checkpoint: {}\n", checkpoint_path);
-                traversal.resume_or_start(checkpoint_path, Game());
-            } else {
-                std::cout << "Starting infinite traversal (Ctrl+C to stop)...\n";
-                traversal.traverse();
-            }
-
-            g_stop_flag = 1;
-            if (stopper.joinable()) stopper.join();
-
-            // Final save
-            std::cout << "Final checkpoint save... ";
-            if (traversal.save_checkpoint_compact(checkpoint_path, true)) {
-                const auto size = std::filesystem::file_size(checkpoint_path);
-                std::cout << std::format("saved {} KB\n", size / 1024);
-            } else {
-                std::cout << "failed\n";
-            }
-            return 0;
-        }
         char* end = nullptr;
         const long parsed = std::strtol(ms_env, &end, 10);
         if (end != ms_env && parsed > 0) ms = parsed;
