@@ -17,8 +17,6 @@
 class Traversal {
   public:
     Traversal() = default;
-
-    void traverse(const Game& game = Game());
     // Run traversal for given wall-clock duration (default: 10s) and then stop, emitting a summary
     // via callback if set, otherwise printing to stdout.
     void traverse_for(std::chrono::milliseconds duration = std::chrono::seconds(10), const Game& game = Game());
@@ -26,14 +24,8 @@ class Traversal {
     void traverse_for_continue(std::chrono::milliseconds duration = std::chrono::seconds(10),
                                const Game& game = Game());
 
-    // Controls
-    void reset();                  // reset counters and internal loop DB, clear stop flag
-    void request_stop() noexcept { // cooperative stop (safe to call from any thread)
-        stop_.store(true, std::memory_order_relaxed);
-    }
-    [[nodiscard]] std::size_t games_completed() const noexcept {
-        return game_count.load(std::memory_order_relaxed) - 1;
-    }
+    // Cooperative stop retained for callbacks if needed in future extensions.
+    void request_stop() noexcept { stop_.store(true, std::memory_order_relaxed); }
 
     // Event payloads and subscription APIs
     struct ResultEvent {
@@ -78,31 +70,8 @@ class Traversal {
     void set_task_depth_limit(int limit) { task_depth_limit_ = limit; }
 
     // Checkpoint / resume API
-    struct Frame {
-        Game game;
-        std::uint32_t next_idx{0};
-    };
-
-    // Optimized checkpoint frame (stores only incremental state)
-    struct CompactFrame {
-        uint32_t board_occ, board_black, board_dame;
-        uint8_t player;
-        uint8_t looping;
-        uint32_t next_idx;
-        uint32_t parent_frame_idx; // Index into work_stack for parent
-        uint32_t move_from_parent; // Move index that led to this state
-        uint32_t current_hash;     // Board hash (for loop detection)
-    };
-    bool save_checkpoint(const std::string& path) const;
-    bool save_checkpoint_compact(const std::string& path, bool compress = true) const;
-    bool load_checkpoint(const std::string& path);
-    bool load_checkpoint_compact(const std::string& path);
-    void traverse_iterative(Game root); // single-thread iterative DFS (fills work_stack_)
+    bool save_checkpoint_compact(const std::string& path, bool compress = true) const; // legacy compatible public API
     void resume_or_start(const std::string& chk_path, Game root = Game());
-    void run_from_work_stack();      // continue using pre-populated work_stack_
-    void start_root_only(Game root); // initialize work stack with root only (no exploration)
-    bool step_one();                 // perform a single DFS expansion/result; returns false if finished
-    std::size_t pending_frames() const noexcept { return work_stack_.size(); }
 
   private:
     // Counter for completed games; updated concurrently
@@ -138,10 +107,15 @@ class Traversal {
     std::function<void(const SummaryEvent&)> summary_cb_;
     std::function<void(const ProgressEvent&)> progress_cb_;
     mutable std::mutex cb_mutex_;
+    // Minimal internal stack retained only for checkpoint compatibility (not exposed for manual stepping)
+    struct Frame {
+        Game game;
+        std::uint32_t next_idx{0};
+    };
+    std::vector<Frame> work_stack_{}; // remains empty in timed traversal mode
 
-    // Iterative DFS state (only used for checkpoint-based traversal)
-    std::vector<Frame> work_stack_{};
-    void emit_result(const Game& game); // factored leaf handler for iterative path
+    // Compact checkpoint load helper (internal)
+    bool load_checkpoint_compact(const std::string& path);
 
     // Helpers for sharded loop database
     static constexpr std::size_t shard_for(std::size_t h) noexcept {

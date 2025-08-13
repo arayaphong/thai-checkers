@@ -60,174 +60,6 @@ static void write_blob(FILE* f, const void* p, size_t n) { std::fwrite(p, 1, n, 
 static bool read_blob(FILE* f, void* p, size_t n) { return std::fread(p, 1, n, f) == n; }
 } // namespace
 
-// -------------------- Iterative traversal helpers --------------------
-void Traversal::emit_result(const Game& game) {
-    const auto& history = game.get_move_sequence();
-    const std::size_t move_history_count = history.size() / 2;
-    if (game.is_looping()) record_loop(game.board());
-    const std::size_t total = game_count.fetch_add(1, std::memory_order_relaxed);
-    std::function<void(const ResultEvent&)> cb_copy;
-    {
-        std::scoped_lock lock(cb_mutex_);
-        cb_copy = result_cb_;
-    }
-    if (!cb_copy) return;
-    std::vector<std::size_t> moves_only;
-    moves_only.reserve(move_history_count);
-    for (std::size_t i = 1; i < history.size(); i += 2) moves_only.push_back(history[i]);
-    ResultEvent ev{
-        .game_id = total,
-        .looping = game.is_looping(),
-        .winner = game.is_looping() ? std::nullopt
-                                    : std::optional<PieceColor>(
-                                          (game.player() == PieceColor::BLACK) ? PieceColor::WHITE : PieceColor::BLACK),
-        .move_history = std::move(moves_only),
-        .history = history,
-    };
-    cb_copy(ev);
-}
-
-void Traversal::traverse_iterative(Game root) {
-    work_stack_.clear();
-
-    // Pre-allocate stack space in high-performance mode
-    if (high_performance_mode_) { work_stack_.reserve(static_cast<size_t>(1000 * memory_speed_ratio_)); }
-
-    work_stack_.push_back(Frame{std::move(root), 0});
-    while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
-        Frame& f = work_stack_.back();
-        const std::size_t h{f.game.board()};
-
-        // Optimized loop detection
-        const bool skip_loop_check = high_performance_mode_ && work_stack_.size() < 10 && memory_speed_ratio_ > 0.7;
-
-        if (!skip_loop_check && loop_seen(h)) {
-            work_stack_.pop_back();
-            continue;
-        }
-
-        const auto mc = f.game.move_count();
-        if (mc == 0) {
-            emit_result(f.game);
-            work_stack_.pop_back();
-            continue;
-        }
-        if (f.next_idx >= mc) {
-            work_stack_.pop_back();
-            continue;
-        }
-        const auto idx = f.next_idx++;
-        Game child = f.game; // copy
-        child.select_move(idx);
-        work_stack_.push_back(Frame{std::move(child), 0});
-    }
-}
-
-void Traversal::start_root_only(Game root) {
-    work_stack_.clear();
-    work_stack_.push_back(Frame{std::move(root), 0});
-}
-
-bool Traversal::step_one() {
-    if (work_stack_.empty()) return false;
-    if (stop_.load(std::memory_order_relaxed)) return false;
-    Frame& f = work_stack_.back();
-    const std::size_t h{f.game.board()};
-    if (loop_seen(h)) {
-        work_stack_.pop_back();
-        return !work_stack_.empty();
-    }
-    const auto mc = f.game.move_count();
-    if (mc == 0) {
-        emit_result(f.game);
-        work_stack_.pop_back();
-        return !work_stack_.empty();
-    }
-    if (f.next_idx >= mc) {
-        work_stack_.pop_back();
-        return !work_stack_.empty();
-    }
-    const auto idx = f.next_idx++;
-    Game child = f.game;
-    child.select_move(idx);
-    work_stack_.push_back(Frame{std::move(child), 0});
-    return true;
-}
-
-void Traversal::run_from_work_stack() {
-    while (!work_stack_.empty() && !stop_.load(std::memory_order_relaxed)) {
-        Frame& f = work_stack_.back();
-        const std::size_t h{f.game.board()};
-        if (loop_seen(h)) {
-            work_stack_.pop_back();
-            continue;
-        }
-        const auto mc = f.game.move_count();
-        if (mc == 0) {
-            emit_result(f.game);
-            work_stack_.pop_back();
-            continue;
-        }
-        if (f.next_idx >= mc) {
-            work_stack_.pop_back();
-            continue;
-        }
-        const auto idx = f.next_idx++;
-        Game child = f.game;
-        child.select_move(idx);
-        work_stack_.push_back(Frame{std::move(child), 0});
-    }
-}
-
-bool Traversal::save_checkpoint(const std::string& path) const {
-    const std::string tmp = path + ".tmp";
-    FILE* f = std::fopen(tmp.c_str(), "wb");
-    if (!f) return false;
-    CheckpointHeader H{};
-    H.shard_count = static_cast<uint32_t>(loop_shards_.size());
-    H.game_count = game_count.load(std::memory_order_relaxed);
-    H.global_session_total = global_session_total;
-    H.stack_size = work_stack_.size();
-    if (start_tp_.time_since_epoch().count() != 0) {
-        const auto now = std::chrono::steady_clock::now();
-        H.wall_ms_so_far = std::chrono::duration_cast<std::chrono::milliseconds>(now - start_tp_).count();
-    }
-    write_blob(f, &H, sizeof(H));
-    for (const auto& fr : work_stack_) {
-        FrameBlob fb{};
-        fb.game.board.occ = fr.game.board().occ_bits();
-        fb.game.board.black = fr.game.board().black_bits();
-        fb.game.board.dame = fr.game.board().dame_bits();
-        fb.game.board.player = static_cast<uint8_t>(fr.game.player());
-        fb.game.player_to_move = fb.game.board.player;
-        fb.game.looping = fr.game.is_looping() ? 1 : 0;
-        const auto& hist = fr.game.get_move_sequence();
-        fb.game.history_len = static_cast<uint32_t>(hist.size());
-        fb.next_idx = fr.next_idx;
-        write_blob(f, &fb, sizeof(fb));
-        for (auto v : hist) {
-            uint64_t u = static_cast<uint64_t>(v);
-            write_blob(f, &u, sizeof(u));
-        }
-    }
-    for (const auto& shard : loop_shards_) {
-        const uint64_t n = shard.set.size();
-        write_blob(f, &n, sizeof(n));
-        for (auto h : shard.set) {
-            uint64_t hv = static_cast<uint64_t>(h);
-            write_blob(f, &hv, sizeof(hv));
-        }
-    }
-    std::fclose(f);
-    std::error_code ec;
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) {
-        std::filesystem::remove(tmp);
-        return false;
-    }
-    return true;
-}
-
 bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) const {
     const std::string tmp = path + ".tmp";
     FILE* f = std::fopen(tmp.c_str(), "wb");
@@ -295,80 +127,6 @@ bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) 
         std::filesystem::remove(tmp);
         return false;
     }
-    return true;
-}
-
-bool Traversal::load_checkpoint(const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
-    CheckpointHeader H{};
-    if (!read_blob(f, &H, sizeof(H))) {
-        std::fclose(f);
-        return false;
-    }
-    if (std::string_view(H.magic, 7) != "TCHKPT1") {
-        std::fclose(f);
-        return false;
-    }
-    work_stack_.clear();
-    work_stack_.reserve(H.stack_size);
-    for (uint64_t i = 0; i < H.stack_size; ++i) {
-        FrameBlob fb{};
-        if (!read_blob(f, &fb, sizeof(fb))) {
-            std::fclose(f);
-            return false;
-        }
-        Game g;
-        Board b;
-        b.set_from_masks(fb.game.board.occ, fb.game.board.black, fb.game.board.dame);
-        g.set_board(b);
-        g.set_player(static_cast<PieceColor>(fb.game.player_to_move));
-        g.set_looping(fb.game.looping != 0);
-        std::vector<std::size_t> hist;
-        hist.resize(fb.game.history_len);
-        if (H.version >= 2) {
-            for (uint32_t k = 0; k < fb.game.history_len; ++k) {
-                uint64_t v;
-                if (!read_blob(f, &v, sizeof(v))) {
-                    std::fclose(f);
-                    return false;
-                }
-                hist[k] = static_cast<std::size_t>(v);
-            }
-        } else { // legacy v1 (32-bit truncation)
-            for (uint32_t k = 0; k < fb.game.history_len; ++k) {
-                uint32_t v;
-                if (!read_blob(f, &v, sizeof(v))) {
-                    std::fclose(f);
-                    return false;
-                }
-                hist[k] = static_cast<std::size_t>(v);
-            }
-        }
-        g.set_move_sequence(std::move(hist));
-        work_stack_.push_back(Frame{std::move(g), fb.next_idx});
-    }
-    for (auto& shard : loop_shards_) {
-        uint64_t n = 0;
-        if (!read_blob(f, &n, sizeof(n))) {
-            std::fclose(f);
-            return false;
-        }
-        std::unique_lock lk(shard.mtx);
-        shard.set.clear();
-        for (uint64_t i = 0; i < n; ++i) {
-            uint64_t hv;
-            if (!read_blob(f, &hv, sizeof(hv))) {
-                std::fclose(f);
-                return false;
-            }
-            shard.set.insert(static_cast<std::size_t>(hv));
-        }
-    }
-    game_count.store(H.game_count, std::memory_order_relaxed);
-    global_session_total = H.global_session_total;
-    std::fclose(f);
-    start_tp_ = std::chrono::steady_clock::now() - std::chrono::milliseconds(H.wall_ms_so_far);
     return true;
 }
 
@@ -465,43 +223,27 @@ bool Traversal::load_checkpoint_compact(const std::string& path) {
     return true;
 }
 
-void Traversal::resume_or_start(const std::string& chk_path, Game root) {
+void Traversal::resume_or_start(const std::string& chk_path, Game /*root*/) {
+    // Resume counters but no immediate traversal run.
     stop_.store(false, std::memory_order_relaxed);
-    if (!chk_path.empty()) {
-        // Try compact checkpoint first, then fallback to regular checkpoint
-        if (load_checkpoint_compact(chk_path) || load_checkpoint(chk_path)) {
-            // Store the global total from checkpoint as session start
-            session_start_count = global_session_total; // Use the stored cumulative total
-            std::cout << "Successfully loaded checkpoint, resuming traversal...\n";
-            run_from_work_stack();
-        } else {
-            std::cout << "Failed to load checkpoint, starting fresh...\n";
-            game_count.store(1, std::memory_order_relaxed);
-            global_session_total = 0; // Fresh start
-            session_start_count = 0;  // Fresh start
-            clear_loops();
-            start_tp_ = std::chrono::steady_clock::now();
-            traverse_iterative(std::move(root));
-        }
-    } else {
+    if (!chk_path.empty() && load_checkpoint_compact(chk_path)) {
+        session_start_count = global_session_total;
+        std::cout << "Loaded compact checkpoint. Ready to continue with traverse_for_continue().\n";
+    } else if (!chk_path.empty()) {
+        std::cout << "Failed to load compact checkpoint; starting fresh session counters.\n";
         game_count.store(1, std::memory_order_relaxed);
-        global_session_total = 0; // Fresh start
-        session_start_count = 0;  // Fresh start
+        global_session_total = 0;
+        session_start_count = 0;
         clear_loops();
         start_tp_ = std::chrono::steady_clock::now();
-        traverse_iterative(std::move(root));
+    } else {
+        game_count.store(1, std::memory_order_relaxed);
+        global_session_total = 0;
+        session_start_count = 0;
+        clear_loops();
+        start_tp_ = std::chrono::steady_clock::now();
     }
-
-    // Update global total after this session
-    const std::size_t current_total = game_count.load(std::memory_order_relaxed) - 1;
-    const std::size_t session_games = current_total - session_start_count;
-    global_session_total = session_start_count + session_games; // Store the cumulative total
-
-    // Skip printing summary for checkpoint resume - the next session will show all relevant info
-    // print_summary();
-
-    // After checkpoint resume completes, update the baseline for next session
-    session_start_count = global_session_total; // Next session starts from this new total
+    session_start_count = global_session_total;
 }
 
 bool Traversal::loop_seen(std::size_t h) const {
@@ -535,16 +277,6 @@ void Traversal::clear_loops() {
         std::unique_lock lk(shard.mtx);
         shard.set.clear();
     }
-}
-
-void Traversal::reset() {
-    request_stop();
-    clear_loops();
-    // Reset counters and timers
-    game_count.store(1, std::memory_order_relaxed);
-    stop_.store(false, std::memory_order_relaxed);
-    start_tp_ = {};
-    deadline_tp_ = {};
 }
 
 void Traversal::traverse_impl(const Game& game, int depth) {
@@ -679,44 +411,6 @@ void Traversal::traverse_impl(const Game& game, int depth) {
             traverse_impl(next_game, depth + 1);
         }
     }
-}
-
-void Traversal::traverse(const Game& game) {
-    // Fresh run state, similar to traverse_for but without a deadline
-    stop_.store(false, std::memory_order_relaxed);
-    game_count.store(1, std::memory_order_relaxed);
-    clear_loops();
-    start_tp_ = std::chrono::steady_clock::now();
-    deadline_tp_ = {};
-
-    // Progress thread (no deadline, only emits progress callbacks)
-    std::thread progress_thr([this]() {
-        static thread_local auto last = std::chrono::steady_clock::now();
-        while (!stop_.load(std::memory_order_relaxed)) {
-            const auto now = std::chrono::steady_clock::now();
-            if ((now - last) >= progress_interval_ms_) {
-                ProgressEvent ev{.games = game_count.load(std::memory_order_relaxed) - 1};
-                std::function<void(const ProgressEvent&)> cb_copy;
-                {
-                    std::scoped_lock lock(cb_mutex_);
-                    cb_copy = progress_cb_;
-                }
-                if (cb_copy) cb_copy(ev);
-                last = now;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        }
-    });
-
-    // Run traversal to completion
-    traverse_impl(game, /*depth=*/0);
-
-    // Signal progress thread to stop and join
-    stop_.store(true, std::memory_order_relaxed);
-    if (progress_thr.joinable()) progress_thr.join();
-
-    // Emit summary (via callback or stdout fallback)
-    print_summary();
 }
 
 void Traversal::traverse_for(std::chrono::milliseconds duration, const Game& game) {
