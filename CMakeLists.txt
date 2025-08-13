@@ -125,10 +125,6 @@ if(BUILD_TESTING)
 
     include(Catch)
     catch_discover_tests(selector_tests)
-
-    # Utility to dump current board-hash sequences for selectors (used to update expected values)
-    add_executable(dump_sequences tools/dump_sequences.cpp)
-    target_link_libraries(dump_sequences PRIVATE thai_checkers_lib)
 endif()
 
 # Add coverage target if enabled
