@@ -271,8 +271,9 @@ TEST_CASE("Main functionality - Result callback formatting", "[main][callbacks]"
             }
         }
 
-        std::string formatted = std::format("[result] game_id: {}, winner: {}, moves: {}", ev.game_id, winner_label,
-                                            ev.move_history.size());
+        const auto moves_played = (ev.history.size() > 0) ? ev.history.size() - 1 : 0;
+        std::string formatted =
+            std::format("[result] game_id: {}, winner: {}, moves: {}", ev.game_id, winner_label, moves_played);
         formatted_results.push_back(formatted);
 
         // Stop early for test

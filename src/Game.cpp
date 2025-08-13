@@ -42,7 +42,8 @@ std::string board_to_string(const Board& board) {
 }
 
 Game::Game() : current_player(PieceColor::WHITE), current_board(Board::setup()) {
-    board_move_sequence.push_back(current_board);
+    // Record initial board hash only
+    board_move_sequence.push_back(static_cast<std::size_t>(current_board));
     // Track initial state for repetition detection
     seen_states_.clear();
     seen_states_.insert(state_key());
@@ -141,8 +142,8 @@ Board Game::execute_move(const Move& move) {
     // Remove captured pieces
     for (const auto& pos : captured) { new_board.remove_piece(pos); }
 
-    // Keep track of the new board state
-    board_move_sequence.push_back(new_board);
+    // Keep track of the new board state hash only
+    board_move_sequence.push_back(static_cast<std::size_t>(new_board));
 
     // Update current player and board state
     current_board = new_board;
@@ -167,9 +168,7 @@ std::size_t Game::move_count() const {
 
 void Game::select_move(std::size_t index) {
     const auto& choices = get_choices();
-
-    // Keep track of the move sequence
-    board_move_sequence.push_back(index);
+    // (Refactored) No longer recording chosen move indices; history now contains only board hashes
 
     // Execute the selected move
     (void)execute_move(choices[index]);

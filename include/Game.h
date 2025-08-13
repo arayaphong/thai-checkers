@@ -28,6 +28,7 @@ struct Move {
 class Game {
     PieceColor current_player;
     Board current_board;
+    // Sequence of board state hashes only (initial state + each resulting state after a move)
     std::vector<std::size_t> board_move_sequence;
 
     mutable std::vector<Move> choices_cache_{};

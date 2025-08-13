@@ -29,11 +29,10 @@ class Traversal {
 
     // Event payloads and subscription APIs
     struct ResultEvent {
-        std::size_t game_id;                   // total games completed so far
-        bool looping;                          // true if ended due to repetition
-        std::optional<PieceColor> winner;      // winner if not looping
-        std::vector<std::size_t> move_history; // sequence of chosen move indices (derived)
-        std::vector<std::size_t> history;      // raw board_move_sequence (initial hash, then index, hash, ...)
+        std::size_t game_id;              // total games completed so far
+        bool looping;                     // true if ended due to repetition
+        std::optional<PieceColor> winner; // winner if not looping
+        std::vector<std::size_t> history; // sequence of board state hashes (initial + each resulting state)
     };
     struct SummaryEvent {
         double wall_seconds;

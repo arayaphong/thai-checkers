@@ -92,7 +92,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
         }
 
         std::cout << std::format("[result] game_id: {}, winner: {}, moves: {}\n", ev.game_id, winner_label,
-                                 ev.move_history.size());
+                                 ev.history.size());
     });
 
     // Enhanced summary callback with checkpoint info

@@ -95,18 +95,7 @@ bool Traversal::save_checkpoint_compact(const std::string& path, bool compress) 
         cf.parent_frame_idx = UINT32_MAX; // Root frame
         cf.move_from_parent = 0;
 
-        const auto& current_hist = fr.game.get_move_sequence();
-        if (current_hist.size() >= 2) { // Has at least one move
-            cf.move_from_parent = static_cast<uint32_t>(current_hist.back());
-            // Simple parent detection - could be optimized further
-            for (int j = static_cast<int>(i) - 1; j >= 0; --j) {
-                const auto& candidate_hist = work_stack_[j].game.get_move_sequence();
-                if (candidate_hist.size() == current_hist.size() - 2) {
-                    cf.parent_frame_idx = static_cast<uint32_t>(j);
-                    break;
-                }
-            }
-        }
+        // With hash-only histories, we don't attempt to compress parent linkage beyond storing current hash.
         write_blob(f, &cf, sizeof(cf));
     }
 
@@ -174,24 +163,13 @@ bool Traversal::load_checkpoint_compact(const std::string& path) {
         // Reconstruct move history by tracing back to root
         std::vector<std::size_t> history;
         if (cf.parent_frame_idx != UINT32_MAX && cf.parent_frame_idx < i) {
-            // Get parent's history and append this move
+            // Get parent's history and append current hash
             const auto& parent_frame = work_stack_[cf.parent_frame_idx];
             history = parent_frame.game.get_move_sequence();
-            // Move sequence format: [hash, move_idx, hash, move_idx, ...]
-            // Add the move index and resulting hash
-            history.push_back(cf.move_from_parent);
             history.push_back(cf.current_hash);
         } else {
-            // This is a root frame or direct child of root
-            if (cf.move_from_parent != 0) {
-                // Direct child of root
-                history.push_back(Game().board());      // Root hash
-                history.push_back(cf.move_from_parent); // Move index
-                history.push_back(cf.current_hash);     // Resulting hash
-            } else {
-                // Root frame - just has initial hash
-                history.push_back(cf.current_hash);
-            }
+            // Root frame - just has initial hash
+            history.push_back(cf.current_hash);
         }
 
         g.set_move_sequence(std::move(history));
@@ -293,7 +271,8 @@ void Traversal::traverse_impl(const Game& game, int depth) {
 
     if (move_count == 0) {
         const auto& history = game.get_move_sequence();
-        const std::size_t move_history_count = history.size() / 2;
+        const std::size_t move_history_count =
+            history.size() > 0 ? history.size() - 1 : 0; // number of plies (hash transitions)
 
         if (game.is_looping()) record_loop(h);
 
@@ -305,13 +284,7 @@ void Traversal::traverse_impl(const Game& game, int depth) {
             cb_copy = result_cb_;
         }
         if (cb_copy) {
-            // Copy only the chosen move indices portion of history
-            std::vector<std::size_t> moves_only;
-            moves_only.reserve(move_history_count);
-            // board_move_sequence alternates: push initial hash, then for each ply push move index and new board hash
-            // From Game::select_move it pushes index, and execute_move pushes new board hash
-            for (std::size_t i = 1; i < history.size(); i += 2) moves_only.push_back(history[i]);
-
+            // No longer tracking move indices separately; provide empty move_history
             ResultEvent ev{
                 .game_id = total,
                 .looping = game.is_looping(),
@@ -319,7 +292,6 @@ void Traversal::traverse_impl(const Game& game, int depth) {
                               ? std::nullopt
                               : std::optional<PieceColor>((game.player() == PieceColor::BLACK) ? PieceColor::WHITE
                                                                                                : PieceColor::BLACK),
-                .move_history = std::move(moves_only),
                 .history = history, // copy raw full history
             };
             cb_copy(ev);
