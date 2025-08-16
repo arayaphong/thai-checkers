@@ -26,51 +26,48 @@ struct Move {
 };
 
 class Game {
-    PieceColor current_player;
     Board current_board;
-    // Sequence of board state hashes only (initial state + each resulting state after a move)
-    std::vector<std::size_t> board_move_sequence;
+    // Use combined hash of board+player as key to track board+player combinations
+    std::unordered_map<std::size_t, int> position_count;
+    std::vector<uint8_t> index_history;
+    std::vector<Board> board_history; // Store complete board states for proper undo
 
-    mutable std::vector<Move> choices_cache_{};
+    mutable bool is_looping_ = false;
     mutable bool choices_dirty_ = true;
-    // Repetition detection and termination
-    std::unordered_set<std::size_t> seen_states_{}; // key = board hash ^ mix(player)
-    bool game_over_ = false;
-    [[nodiscard]] std::size_t state_key() const noexcept {
-        return current_board ^ (static_cast<std::size_t>(current_player) * 0x9e3779b97f4a7c15ULL);
-    }
+    mutable std::vector<Move> choices_cache_{};
 
   public:
-    static Game copy(const Game& other);
+    static Game copy(const Game& other) { return other; }
 
   private:
     std::unordered_map<Position, Legals> get_moveable_pieces() const;
     const std::vector<Move>& get_choices() const;
-    Board execute_move(const Move& move);
+    void push_history_state();
+    void execute_move(const Move& move);
+    bool seen(const Board& board) const noexcept;
+
+    // Helper to create combined hash of board position + current player
+    std::size_t get_position_key(const Board& board, PieceColor player) const noexcept;
 
   public:
-    Game();
-    [[nodiscard]] std::size_t move_count() const;
+    Game() noexcept : current_board(Board::setup()), choices_dirty_(true), choices_cache_{} {
+        board_history.push_back(current_board);   // Initialize with starting position
+        position_count[current_board.hash()] = 1; // Count the starting position
+    }
+    Game(Board b) noexcept : current_board(b), choices_dirty_(true), choices_cache_{} {
+        board_history.push_back(current_board);   // Initialize with given position
+        position_count[current_board.hash()] = 1; // Count the given position
+    }
+
+    [[nodiscard]] std::size_t move_count() const { return is_looping_ ? 0 : get_choices().size(); }
+    void undo_move();
     void select_move(std::size_t index);
     void print_board() const noexcept;
     void print_choices() const;
 
     // Accessors
-    [[nodiscard]] const std::vector<std::size_t>& get_move_sequence() const noexcept { return board_move_sequence; }
-    [[nodiscard]] const bool& is_looping() const noexcept { return game_over_; }
+    [[nodiscard]] const std::vector<uint8_t>& get_move_sequence() const noexcept { return index_history; }
+    [[nodiscard]] bool is_looping() const noexcept { return is_looping_; }
     [[nodiscard]] const Board& board() const noexcept { return current_board; }
-    [[nodiscard]] PieceColor player() const noexcept { return current_player; }
-
-    // --- Checkpoint restore helpers (not part of normal gameplay API) ---
-    void set_board(Board b) noexcept {
-        current_board = std::move(b);
-        choices_dirty_ = true;
-    }
-    void set_player(PieceColor p) noexcept {
-        current_player = p;
-        choices_dirty_ = true;
-    }
-    void set_looping(bool v) noexcept { game_over_ = v; }
-    void set_move_sequence(std::vector<std::size_t> seq) { board_move_sequence = std::move(seq); }
-    void set_seen_states(std::unordered_set<std::size_t> seen) { seen_states_ = std::move(seen); }
+    [[nodiscard]] PieceColor player() const noexcept;
 };

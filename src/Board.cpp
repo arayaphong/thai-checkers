@@ -7,6 +7,30 @@
 #include <format>
 #include <optional>
 
+Board Board::from_hash(std::size_t hash) {
+    Board board;
+
+    std::bitset<64> bits(hash);
+    // Occupancy in bits 32..63
+    board.occ_bits_ = static_cast<std::uint32_t>(hash >> 32);
+
+    // Reconstruct dame_bits_ and black_bits_ from first 16 occupied squares' metadata
+    board.dame_bits_ = 0;
+    board.black_bits_ = 0;
+    int count = 0;
+    for (int i = 0; i < 32 && count < 16; ++i) {
+        const auto m = static_cast<std::uint32_t>(1u) << i;
+        if ((board.occ_bits_ & m) == 0u) continue;
+
+        // Dame info is in bits[count], black info is in bits[count + 16]
+        if (bits[count]) board.dame_bits_ |= m;
+        if (bits[count + 16]) board.black_bits_ |= m;
+        ++count;
+    }
+
+    return board;
+}
+
 std::size_t Board::hash() const noexcept {
     // Compose a 64-bit hash: top 32 bits are occupancy layout, lower bits summarize first up-to-16 pieces' color/type.
     std::bitset<64> bits;

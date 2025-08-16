@@ -80,15 +80,7 @@ class Explorer {
     // Custom hash for SequenceKey
     struct SequenceKeyHash {
         [[nodiscard]] constexpr std::size_t operator()(const SequenceKey& k) const noexcept {
-            // Simple mix: final_pos hash in low bits, multiplicative scramble of mask
-            // Enough for tiny key set (number of capture sequences is small)
-            const auto posh = k.final_pos.hash();
-            // 64-bit mix constant (from splitmix64)
-            std::uint64_t x = k.captured_mask + 0x9E3779B97F4A7C15ull;
-            x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
-            x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
-            x ^= (x >> 31);
-            return static_cast<std::size_t>(x ^ (posh + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2)));
+            return (k.captured_mask << 37) | k.final_pos.hash();
         }
     };
 

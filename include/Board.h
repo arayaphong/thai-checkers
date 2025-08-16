@@ -62,6 +62,7 @@ class Board {
         return Position::is_valid(pos.x(), pos.y()) && ((pos.x() + pos.y()) % 2 != 0);
     }
     [[nodiscard]] static Board copy(const Board& other) { return Board{other}; }
+    [[nodiscard]] static Board from_hash(std::size_t hash);
 
     [[nodiscard]] std::size_t hash() const noexcept;
     [[nodiscard]] operator std::size_t() const noexcept { return hash(); }
