@@ -1,72 +1,96 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "CMake Configure",
-            "type": "shell",
-            "command": "cmake",
-            "args": [
-                "-B", "build",
-                "-S", ".",
-                "-DCMAKE_BUILD_TYPE=Debug"
-            ],
-            "group": "build",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            },
-            "problemMatcher": ["$gcc"]
-        },
-        {
-            "label": "CMake Build",
-            "type": "shell",
-            "command": "cmake",
-            "args": [
-                "--build", "build",
-                "--config", "Debug"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "dependsOn": "CMake Configure",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            },
-            "problemMatcher": ["$gcc"]
-        },
-        {
-            "label": "Clean Build",
-            "type": "shell",
-            "command": "rm",
-            "args": [
-                "-rf", "build"
-            ],
-            "group": "build",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            }
-        },
-        {
-            "label": "Run Application",
-            "type": "shell",
-            "command": "./build/ThaiCheckers2",
-            "group": "test",
-            "dependsOn": "CMake Build",
-            "presentation": {
-                "echo": true,
-                "reveal": "always",
-                "focus": false,
-                "panel": "shared"
-            }
-        }
-    ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "CMake Configure",
+			"type": "shell",
+			"command": "cmake",
+			"args": ["-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Debug", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" },
+			"problemMatcher": ["$gcc"]
+		},
+		{
+			"label": "CMake Build",
+			"type": "shell",
+			"command": "cmake",
+			"args": ["--build", "build", "--config", "Debug"],
+			"group": { "kind": "build", "isDefault": true },
+			"dependsOn": "CMake Configure",
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" },
+			"problemMatcher": ["$gcc"]
+		},
+		{
+			"label": "Clean Build",
+			"type": "shell",
+			"command": "rm",
+			"args": ["-rf", "build"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" }
+		},
+		{
+			"label": "Run Thai Checkers Main",
+			"type": "shell",
+			"command": "./build/thai_checkers_main",
+			"group": "test",
+			"dependsOn": "CMake Build",
+			"presentation": { "echo": true, "reveal": "always", "focus": false, "panel": "shared" }
+		},
+		{
+			"label": "CMake Build (Temp)",
+			"type": "shell",
+			"command": "cmake",
+			"args": ["--build", "build", "--config", "Debug"],
+			"problemMatcher": ["$gcc"],
+			"group": "build"
+		},
+		{
+			"label": "CMake Configure (Temp)",
+			"type": "shell",
+			"command": "cmake",
+			"args": ["-B", "build", "-S", ".", "-DCMAKE_BUILD_TYPE=Debug"],
+			"problemMatcher": ["$gcc"],
+			"group": "build"
+		},
+		{
+			"label": "CMake Build (Temp, -j)",
+			"type": "shell",
+			"command": "cmake",
+			"args": ["--build", "build", "--config", "Debug", "--", "-j"],
+			"problemMatcher": ["$gcc"],
+			"group": "build"
+		},
+		{
+			"label": "Lint: clang-tidy (pre-commit manual)",
+			"type": "shell",
+			"command": "pre-commit",
+			"args": ["run", "clang-tidy", "--all-files", "--hook-stage=manual"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
+		},
+		{
+			"label": "Format: All (pre-commit)",
+			"type": "shell",
+			"command": "pre-commit",
+			"args": ["run", "clang-format", "--all-files"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
+		},
+		{
+			"label": "Format: Staged (pre-commit)",
+			"type": "shell",
+			"command": "pre-commit",
+			"args": ["run", "clang-format"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
+		},
+		{
+			"label": "Format: Check (no changes)",
+			"type": "shell",
+			"command": "pre-commit",
+			"args": ["run", "clang-format", "--all-files"],
+			"group": "build",
+			"presentation": { "echo": true, "reveal": "always", "panel": "shared" }
+		}
+	]
 }

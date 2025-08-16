@@ -2,10 +2,10 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug Thai Checkers 2",
+            "name": "Debug DameCaptureTest",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/ThaiCheckers2",
+            "program": "${workspaceFolder}/build/thai_checkers_main",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -17,18 +17,10 @@
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
-                },
-                {
-                    "description": "Set Disassembly Flavor to Intel",
-                    "text": "-gdb-set disassembly-flavor intel",
-                    "ignoreFailures": true
                 }
             ],
-            "preLaunchTask": "CMake Build",
             "miDebuggerPath": "/usr/bin/gdb",
-            "logging": {
-                "engineLogging": false
-            }
+            "preLaunchTask": "CMake Build"
         }
     ]
 }

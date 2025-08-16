@@ -1,28 +1,112 @@
+// Minimal runner for simplified Traversal
+#include "Traversal.h"
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <iostream>
+#include <format>
+#include <limits>
 #include <string>
-#include <vector>
-#include <memory>
-#include <ranges>
+#include <string_view>
+#include <optional>
 
-// C++20 features demonstration
+std::optional<std::chrono::milliseconds> parse_timeout(std::string_view arg) {
+    if (arg.empty()) return std::nullopt;
 
-int main() {
-    std::cout << "Hello, Thai Checkers 2!" << std::endl;
-    std::cout << "This project uses C++20 features." << std::endl;
-    
-    // C++20 feature: auto type deduction improvements
-    auto numbers = std::vector{1, 2, 3, 4, 5};
-    
-    // C++20 feature: ranges
-    std::cout << "Numbers: ";
-    for (const auto& num : numbers) {
-        std::cout << num << " ";
+    try {
+        // Check for 'ms' suffix (milliseconds) FIRST - before checking 's'
+        if (arg.ends_with("ms")) {
+            const auto ms_str = arg.substr(0, arg.length() - 2);
+            const long long ms = std::stoll(std::string(ms_str));
+            return std::chrono::milliseconds(ms);
+        }
+
+        // Check for 's' suffix (seconds)
+        if (arg.ends_with('s')) {
+            const auto seconds_str = arg.substr(0, arg.length() - 1);
+            const double seconds = std::stod(std::string(seconds_str));
+            return std::chrono::milliseconds(static_cast<long long>(seconds * 1000));
+        }
+
+        // Default to seconds if no suffix
+        const double seconds = std::stod(std::string(arg));
+        return std::chrono::milliseconds(static_cast<long long>(seconds * 1000));
+    } catch (const std::exception&) { return std::nullopt; }
+}
+
+void print_usage(const char* program_name) {
+    std::cout << std::format("Usage: {} [--timeout DURATION]\n", program_name);
+    std::cout << "Options:\n";
+    std::cout << "  --timeout DURATION  Set timeout duration (e.g., 10s, 12.5s, 5000ms)\n";
+    std::cout << "                      Default: 10s\n";
+    std::cout << "  --help             Show this help message\n";
+}
+
+int main(int argc, char** argv) {
+    // Default timeout: 10 seconds
+    std::chrono::milliseconds timeout{10000};
+
+    // Parse command line arguments
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        } else if (arg == "--timeout") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --timeout requires a duration argument\n";
+                print_usage(argv[0]);
+                return 1;
+            }
+
+            const auto parsed_timeout = parse_timeout(argv[++i]);
+            if (!parsed_timeout) {
+                std::cerr << std::format("Error: Invalid timeout format '{}'\n", argv[i]);
+                std::cerr << "Expected format: 10s, 12.5s, or 5000ms\n";
+                return 1;
+            }
+
+            timeout = *parsed_timeout;
+        } else {
+            std::cerr << std::format("Error: Unknown argument '{}'\n", arg);
+            print_usage(argv[0]);
+            return 1;
+        }
     }
-    std::cout << std::endl;
-    
-    // C++20 feature: string formatting (if available)
-    std::string message = "Project initialized successfully!";
-    std::cout << message << std::endl;
-    
+
+    std::cout << std::format("Running Thai Checkers analysis with timeout: {}ms\n", timeout.count());
+
+    uint64_t draws = 0, black = 0, white = 0;
+    uint64_t min_moves = std::numeric_limits<uint64_t>::max();
+    uint64_t max_moves = 0;
+
+    Traversal traversal(
+        [&](const Traversal::ResultEvent& ev) {
+            const uint64_t moves = static_cast<uint64_t>(ev.history.size());
+            if (!ev.winner) ++draws;
+            else if (static_cast<int>(*ev.winner) == 0) ++black;
+            else ++white;
+            min_moves = std::min(min_moves, moves);
+            max_moves = std::max(max_moves, moves);
+        },
+        [&](const Traversal::ProgressEvent& ev) {
+            std::cout << std::format("Progress: {} games completed\n", ev.games);
+        });
+
+    Game game;
+    traversal.traverse_for(game, timeout);
+
+    // Print game statistics
+    std::cout << std::format("Game statistics:\n");
+    std::cout << std::format("  Draws: {}\n", draws);
+    std::cout << std::format("  Black wins: {}\n", black);
+    std::cout << std::format("  White wins: {}\n", white);
+    std::cout << std::format("  Min moves: {}\n", min_moves);
+    std::cout << std::format("  Max moves: {}\n", max_moves);
+    std::cout << std::format("  Total games: {}\n", black + white + draws);
+    std::cout << std::format("  Throughput: {:.3f} games/s\n",
+                             static_cast<double>(black + white + draws) / (timeout.count() / 1000.0));
+
     return 0;
 }

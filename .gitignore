@@ -1,5 +1,7 @@
 # Build output
 build/
+build-test/
+build_optimized/
 *.o
 *.obj
 *.exe
@@ -18,7 +20,12 @@ build/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
-Makefile
+
+# Coverage reports
+*.gcov
+coverage.info*
+coverage_cleaned.info
+coverage/
 
 # Temporary files
 *.tmp
@@ -27,3 +34,8 @@ Makefile
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Profiling and debugging
+thai_checkers_optimized
+build_gprof/
+build_ninja/

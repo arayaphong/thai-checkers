@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v20.1.8
+    hooks:
+      - id: clang-format
+        name: clang-format (C++ only)
+        files: \.(h|hpp|cpp)$
+        types_or: [c, c++]
+        additional_dependencies: []
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=auto]
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+  # Use a local clang-tidy hook since the mirrors-clang-tidy repo is no longer available
+  - repo: local
+    hooks:
+      - id: clang-tidy
+        name: clang-tidy (system)
+        language: system
+        entry: bash
+        args: ["scripts/lint_clang_tidy.sh"]
+        stages: [manual]
+        files: '\\.(c|cc|cpp|cxx)$'
+        types_or: [c, c++]
