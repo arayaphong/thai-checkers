@@ -163,7 +163,7 @@ void Explorer::find_capture_sequences_recursive(
     }
 }
 
-Options Explorer::find_valid_moves(const Position& from) const {
+Legals Explorer::find_valid_moves(const Position& from) const {
     if (!board.is_occupied(from)) [[unlikely]] {
         throw std::invalid_argument("Position is occupied, cannot find moves.");
     }

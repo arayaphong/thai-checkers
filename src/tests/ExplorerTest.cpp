@@ -496,8 +496,8 @@ TEST_CASE("Explorer - Pion Advanced capture scenarios", "[PionAnalyzer]") {
 
 // ===== DAME ANALYZER TESTS (from DameAnalyzerTest.cpp) =====
 
-TEST_CASE("Explorer - Options get_positions() with capture sequences", "[Explorer][Options]") {
-    SECTION("get_positions() returns empty when Options contains capture sequences - Pion") {
+TEST_CASE("Explorer - Legals get_positions() with capture sequences", "[Explorer][Legals]") {
+    SECTION("get_positions() returns empty when Legals contains capture sequences - Pion") {
         // Setup a scenario where a Pion can capture a piece (creating capture sequences)
         const Position focus{"C4"};
         const Pieces pieces = {
@@ -523,7 +523,7 @@ TEST_CASE("Explorer - Options get_positions() with capture sequences", "[Explore
         REQUIRE(target_position == Position{"A2"}); // Landing position
     }
     
-    SECTION("get_positions() returns empty when Options contains capture sequences - Dame") {
+    SECTION("get_positions() returns empty when Legals contains capture sequences - Dame") {
         // Setup a simple scenario where a Dame can capture a piece (creating capture sequences)
         const Position focus{"D5"};
         const Pieces pieces = {
@@ -1290,11 +1290,11 @@ TEST_CASE("Explorer - Capture attempt with landing outside board", "[Explorer]")
     }
 }
 
-TEST_CASE("Options - Error handling and edge cases", "[Options]") {
+TEST_CASE("Legals - Error handling and edge cases", "[Legals]") {
     SECTION("Test out of range exceptions for get_position") {
         // Test with regular positions (Positions variant)
         Positions positions = {Position{"A2"}, Position{"B3"}};
-        Options options_pos(std::move(positions));
+        Legals options_pos(std::move(positions));
         
         // Valid indices should work
         REQUIRE_NOTHROW(options_pos.get_position(0));
@@ -1311,7 +1311,7 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
             {Position{"A2"}, Position{"B3"}},
             {Position{"C4"}, Position{"D5"}}
         };
-        Options options_cap(std::move(sequences));
+        Legals options_cap(std::move(sequences));
         
         // Valid indices should work
         REQUIRE_NOTHROW(options_cap.get_position(0));
@@ -1327,7 +1327,7 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
         CaptureSequences sequences = {
             {Position{"A2"}, Position{"B3"}, Position{"C4"}, Position{"D5"}}
         };
-        Options options_cap(std::move(sequences));
+        Legals options_cap(std::move(sequences));
         
         // Valid index should work
         REQUIRE_NOTHROW(options_cap.get_capture_pieces(0));
@@ -1338,9 +1338,9 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
     }
     
     SECTION("Test invalid_argument exceptions for wrong variant types") {
-        // Test calling capture methods on position-only Options
+        // Test calling capture methods on position-only Legals
         Positions positions = {Position{"A2"}, Position{"B3"}};
-        Options options_pos(std::move(positions));
+        Legals options_pos(std::move(positions));
         
         // Should throw invalid_argument when calling capture methods on Positions variant - Line 47 coverage  
         REQUIRE_THROWS_AS(options_pos.get_capture_pieces(0), std::invalid_argument);
@@ -1348,14 +1348,14 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
         // Test the error case where neither variant type matches (theoretical edge case)
         // This tests the final throw in get_position - Line 112 coverage
         // We can't easily create this scenario with the current design, but we can test
-        // with an empty Options that might have undefined behavior
+        // with an empty Legals that might have undefined behavior
         // However, this is more of a theoretical case since the variant will always be one type
     }
     
     SECTION("Test empty options behavior") {
         // Test with empty positions
         Positions empty_positions;
-        Options options_empty_pos(std::move(empty_positions));
+        Legals options_empty_pos(std::move(empty_positions));
         
         REQUIRE(options_empty_pos.empty());
         REQUIRE(options_empty_pos.size() == 0);
@@ -1366,7 +1366,7 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
         
         // Test with empty capture sequences
         CaptureSequences empty_sequences;
-        Options options_empty_cap(std::move(empty_sequences));
+        Legals options_empty_cap(std::move(empty_sequences));
         
         REQUIRE(options_empty_cap.empty());
         REQUIRE(options_empty_cap.size() == 0);
@@ -1383,7 +1383,7 @@ TEST_CASE("Options - Error handling and edge cases", "[Options]") {
             // Sequence with captured pieces at even indices: 0, 2, 4
             {Position{"A2"}, Position{"B3"}, Position{"C4"}, Position{"D5"}, Position{"E6"}, Position{"F7"}}
         };
-        Options options_cap(std::move(sequences));
+        Legals options_cap(std::move(sequences));
         
         auto captured = options_cap.get_capture_pieces(0);
         
