@@ -155,9 +155,13 @@ public:
      * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const Position& get_position(const std::size_t index) const {
-        const std::size_t i = moves_.empty() ? 0 : std::min(index, moves_.size() - 1);
-        static const Position kDefault{};
-        return moves_.empty() ? kDefault : moves_[i].target_position;
+        if (moves_.empty()) [[unlikely]] {
+            throw std::out_of_range("Options::get_position: no moves available");
+        }
+        if (index >= moves_.size()) [[unlikely]] {
+            throw std::out_of_range("Options::get_position: index out of range");
+        }
+        return moves_[index].target_position;
     }
 
     /**
@@ -168,9 +172,16 @@ public:
      * @throws std::invalid_argument if this was constructed from regular positions (for backward compatibility).
      */
     [[nodiscard]] const Positions& get_capture_pieces(const std::size_t index) const {
-        static const Positions kEmpty;
-        const std::size_t i = std::min(index, moves_.size() - 1);
-        return moves_[i].captured_positions;
+        if (!has_captures_) [[unlikely]] {
+            throw std::invalid_argument("Options::get_capture_pieces: not a capture variant");
+        }
+        if (moves_.empty()) [[unlikely]] {
+            throw std::out_of_range("Options::get_capture_pieces: no moves available");
+        }
+        if (index >= moves_.size()) [[unlikely]] {
+            throw std::out_of_range("Options::get_capture_pieces: index out of range");
+        }
+        return moves_[index].captured_positions;
     }
 
     /**
@@ -180,10 +191,13 @@ public:
      * @throws std::out_of_range if index is invalid.
      */
     [[nodiscard]] const MoveInfo& get_move_info(const std::size_t index) const {
-        static const MoveInfo kDefault{};
-        if (moves_.empty()) return kDefault;
-        const std::size_t i = std::min(index, moves_.size() - 1);
-        return moves_[i];
+        if (moves_.empty()) [[unlikely]] {
+            throw std::out_of_range("Options::get_move_info: no moves available");
+        }
+        if (index >= moves_.size()) [[unlikely]] {
+            throw std::out_of_range("Options::get_move_info: index out of range");
+        }
+        return moves_[index];
     }
 
     /**

@@ -190,8 +190,10 @@ void Explorer::find_capture_sequences_recursive(
 }
 
 Options Explorer::find_valid_moves(const Position& from) const {
-    // Check for captures first - they are mandatory in Thai Checkers.
-    // We'll build a map keyed by (captured set, final position) to avoid storing equivalent sequences multiple times.
+    if (!board.is_occupied(from)) [[unlikely]] {
+        throw std::invalid_argument("Position is occupied, cannot find moves.");
+    }
+
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash> unique_sequences;
     unique_sequences.reserve(64);
     const CaptureSequence empty_sequence;

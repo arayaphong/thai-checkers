@@ -70,6 +70,15 @@ if(BUILD_TESTING)
 
     include(Catch)
     catch_discover_tests(selector_tests)
+        # Explorer tests
+        add_executable(explorer_tests
+            src/tests/ExplorerTest.cpp)
+        target_link_libraries(explorer_tests
+            PRIVATE
+                thai_checkers_lib
+                Catch2::Catch2WithMain
+        )
+        catch_discover_tests(explorer_tests)
 endif()
 
 # Add coverage target if enabled
