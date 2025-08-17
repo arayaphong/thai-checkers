@@ -7,9 +7,6 @@
 #include <span>
 #include <utility>
 
-// Static member definition
-constexpr std::array<AnalyzerDirectionDelta, 4> Explorer::dir_deltas;
-
 Legals Explorer::find_valid_moves(const Position& from) const {
     if (!board.is_occupied(from)) [[unlikely]] {
         throw std::invalid_argument("No piece at position");
@@ -30,6 +27,9 @@ Legals Explorer::find_valid_moves(const Position& from) const {
     return Legals(regular_positions);
 }
 
+
+// Static member definition
+constexpr std::array<AnalyzerDirectionDelta, 4> Explorer::dir_deltas;
 
 const std::vector<AnalyzerDirectionDelta>& Explorer::get_valid_directions(const Board& board,
                                                                           const Position& pos) noexcept {
