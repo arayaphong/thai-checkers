@@ -1,17 +1,16 @@
 #pragma once
-#include <memory>
-#include <unordered_map>
-#include <concepts>
-#include <ranges>
-#include <optional>
-#include <vector>
-#include <set>
-#include <cstdint>
-#include <compare>
-#include <utility>
 
-#include "Position.h"
 #include "Piece.h"
+#include "Position.h"
+#include <compare>
+#include <concepts>
+#include <cstdint>
+#include <optional>
+#include <ranges>
+#include <set>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 using Pieces = std::unordered_map<Position, PieceInfo>;
 
@@ -19,6 +18,17 @@ enum class AnalyzerDirection : std::uint8_t { NW = 0, NE = 1, SW = 2, SE = 3 };
 
 template <typename T>
 concept ValidAnalyzerDirection = std::same_as<T, AnalyzerDirection>;
+
+struct BoardConstants {
+    static constexpr int kBoardDimension = 8;
+    static constexpr int kInitialPieceRows = 2;
+    static constexpr int kPiecesPerRow = 4;
+    static constexpr int kWhiteStartingRow = 6;
+    static constexpr int kBoardSquares = 32;
+    static constexpr int kMaxPiecesPerSide = 16;
+    static constexpr int kBitsetSize = 64;
+    static constexpr int kPiecesReserveSize = 12;
+};
 
 struct AnalyzerDirectionDelta {
     std::int8_t row{};
@@ -41,12 +51,17 @@ struct AnalyzerCaptureMove {
 
 class Board {
   private:
-    static constexpr std::size_t PIECES_RESERVE_SIZE = 32;
     // 32 playable squares on an 8x8 board (only dark squares)
     // Bit i corresponds to Position::from_index(i)
     std::uint32_t occ_bits_{};   // occupied squares mask
     std::uint32_t black_bits_{}; // 1 => black piece at that index
     std::uint32_t dame_bits_{};  // 1 => dame at that index
+    // Internal helpers
+    [[nodiscard]] static constexpr std::uint32_t bit(std::size_t idx) noexcept {
+        return static_cast<std::uint32_t>(1u) << static_cast<unsigned>(idx);
+    }
+    [[nodiscard]] static Board from_pieces(const Pieces& pieces);
+    [[nodiscard]] static auto setup_pieces() -> Board;
 
   public:
     Board() = default;
@@ -54,9 +69,9 @@ class Board {
     Board(const Board&) = default;
     Board(Board&&) noexcept = default;
     explicit Board(const Pieces& pieces) { *this = from_pieces(pieces); }
-    explicit Board(Pieces&& pieces) noexcept { *this = from_pieces(pieces); }
+    explicit Board(Pieces&& pieces) { *this = from_pieces(pieces); }
 
-    [[nodiscard]] static Board setup() noexcept;
+    [[nodiscard]] static Board setup();
 
     [[nodiscard]] static constexpr bool is_valid_position(const Position& pos) noexcept {
         return Position::is_valid(pos.x(), pos.y()) && ((pos.x() + pos.y()) % 2 != 0);
@@ -78,39 +93,10 @@ class Board {
 
     // Pass Position by const reference to avoid copying
     void promote_piece(const Position& pos) noexcept;
-    void move_piece(const Position& from, const Position& to) noexcept;
+    void move_piece(const Position& from_pos, const Position& to_pos) noexcept;
     void remove_piece(const Position& pos) noexcept;
 
-    [[nodiscard]] Pieces get_pieces(PieceColor color) const noexcept;
-
-    // --- Checkpoint / serialization support helpers ---
-    [[nodiscard]] std::uint32_t occ_bits() const noexcept { return occ_bits_; }
-    [[nodiscard]] std::uint32_t black_bits() const noexcept { return black_bits_; }
-    [[nodiscard]] std::uint32_t dame_bits() const noexcept { return dame_bits_; }
-    void set_from_masks(std::uint32_t occ, std::uint32_t black, std::uint32_t dame) noexcept {
-        occ_bits_ = occ;
-        black_bits_ = black;
-        dame_bits_ = dame;
-    }
-
-  private:
-    // Internal helpers
-    [[nodiscard]] static constexpr std::uint32_t bit(std::size_t idx) noexcept {
-        return static_cast<std::uint32_t>(1u) << static_cast<unsigned>(idx);
-    }
-    [[nodiscard]] static Board from_pieces(const Pieces& pieces) noexcept {
-        Board b;
-        for (const auto& [pos, info] : pieces) {
-            const auto i = pos.hash();
-            const auto m = bit(i);
-            b.occ_bits_ |= m;
-            if (info.color == PieceColor::BLACK) b.black_bits_ |= m;
-            else b.black_bits_ &= ~m;
-            if (info.type == PieceType::DAME) b.dame_bits_ |= m;
-            else b.dame_bits_ &= ~m;
-        }
-        return b;
-    }
+    [[nodiscard]] Pieces get_pieces(PieceColor color) const;
 };
 
 // C++20 improved std::hash specialization

@@ -25,7 +25,6 @@ repos:
         name: clang-tidy (system)
         language: system
         entry: bash
-        args: ["scripts/lint_clang_tidy.sh"]
-        stages: [manual]
+        args: ["scripts/lint_clang_tidy.sh", "--staged"]
         files: '\\.(c|cc|cpp|cxx)$'
         types_or: [c, c++]

@@ -47,7 +47,7 @@ class Game {
     bool seen(const Board& board) const noexcept;
 
     // Helper to create combined hash of board position + current player
-    std::size_t get_position_key(const Board& board, PieceColor player) const noexcept;
+    static std::size_t get_position_key(const Board& board, PieceColor player) noexcept;
 
   public:
     Game() noexcept : current_board(Board::setup()), choices_dirty_(true), choices_cache_{} {
