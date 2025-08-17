@@ -89,7 +89,7 @@ auto main(int argc, const char* const* argv) -> int {
 
     std::cout << std::format("Running Thai Checkers analysis with timeout: {}ms\n", timeout.count());
 
-    uint64_t draws = 0;
+    uint64_t loops = 0;
     uint64_t black = 0;
     uint64_t white = 0;
     uint64_t min_moves = std::numeric_limits<uint64_t>::max();
@@ -99,7 +99,7 @@ auto main(int argc, const char* const* argv) -> int {
         [&](const Traversal::ResultEvent& result_event) {
             const auto moves = static_cast<uint64_t>(result_event.history.size());
             if (!result_event.winner) {
-                ++draws;
+                ++loops;
             } else if (static_cast<int>(*result_event.winner) == 0) {
                 ++black;
             } else {
@@ -117,14 +117,14 @@ auto main(int argc, const char* const* argv) -> int {
 
     // Print game statistics
     std::cout << std::format("Game statistics:\n");
-    std::cout << std::format("  Draws: {}\n", draws);
+    std::cout << std::format("  Loops: {}\n", loops);
     std::cout << std::format("  Black wins: {}\n", black);
     std::cout << std::format("  White wins: {}\n", white);
     std::cout << std::format("  Min moves: {}\n", min_moves);
     std::cout << std::format("  Max moves: {}\n", max_moves);
-    std::cout << std::format("  Total games: {}\n", black + white + draws);
+    std::cout << std::format("  Total games: {}\n", black + white + loops);
     std::cout << std::format("  Throughput: {:.3f} games/s\n",
-                             static_cast<double>(black + white + draws) / (static_cast<double>(timeout.count()) / static_cast<double>(k_milliseconds_per_second)));
+                             static_cast<double>(black + white + loops) / (static_cast<double>(timeout.count()) / static_cast<double>(k_milliseconds_per_second)));
 
     return 0;
 }
