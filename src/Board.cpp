@@ -7,6 +7,37 @@
 #include <format>
 #include <optional>
 
+Board Board::setup() noexcept {
+    Board board;
+    // Black rows 0..1
+    for (int row = 0; row < 2; ++row) {
+        const int start_col = (row % 2 == 0) ? 1 : 0;
+        for (int i = 0; i < 4; ++i) {
+            const int col = start_col + i * 2;
+            const auto p = Position::from_coords(col, row);
+            const auto idx = static_cast<unsigned>(p.hash());
+            const auto m = static_cast<std::uint32_t>(1u) << idx;
+            board.occ_bits_ |= m;
+            board.black_bits_ |= m;
+            board.dame_bits_ &= ~m;
+        }
+    }
+    // White rows 6..7
+    for (int row = 6; row < 8; ++row) {
+        const int start_col = (row % 2 == 0) ? 1 : 0;
+        for (int i = 0; i < 4; ++i) {
+            const int col = start_col + i * 2;
+            const auto p = Position::from_coords(col, row);
+            const auto idx = static_cast<unsigned>(p.hash());
+            const auto m = static_cast<std::uint32_t>(1u) << idx;
+            board.occ_bits_ |= m;
+            board.black_bits_ &= ~m;
+            board.dame_bits_ &= ~m;
+        }
+    }
+    return board;
+}
+
 Board Board::from_hash(std::size_t hash) {
     Board board;
 
@@ -46,37 +77,6 @@ std::size_t Board::hash() const noexcept {
         ++count;
     }
     return bits.to_ullong();
-}
-
-Board Board::setup() noexcept {
-    Board board;
-    // Black rows 0..1
-    for (int row = 0; row < 2; ++row) {
-        const int start_col = (row % 2 == 0) ? 1 : 0;
-        for (int i = 0; i < 4; ++i) {
-            const int col = start_col + i * 2;
-            const auto p = Position::from_coords(col, row);
-            const auto idx = static_cast<unsigned>(p.hash());
-            const auto m = static_cast<std::uint32_t>(1u) << idx;
-            board.occ_bits_ |= m;
-            board.black_bits_ |= m;
-            board.dame_bits_ &= ~m;
-        }
-    }
-    // White rows 6..7
-    for (int row = 6; row < 8; ++row) {
-        const int start_col = (row % 2 == 0) ? 1 : 0;
-        for (int i = 0; i < 4; ++i) {
-            const int col = start_col + i * 2;
-            const auto p = Position::from_coords(col, row);
-            const auto idx = static_cast<unsigned>(p.hash());
-            const auto m = static_cast<std::uint32_t>(1u) << idx;
-            board.occ_bits_ |= m;
-            board.black_bits_ &= ~m;
-            board.dame_bits_ &= ~m;
-        }
-    }
-    return board;
 }
 
 bool Board::is_occupied(const Position& pos) const noexcept {
@@ -150,4 +150,19 @@ Pieces Board::get_pieces(PieceColor color) const noexcept {
                                    .type = is_dame ? PieceType::DAME : PieceType::PION});
     }
     return out;
+}
+
+// Static helper to construct a board from a Pieces map
+Board Board::from_pieces(const Pieces& pieces) noexcept {
+    Board b;
+    for (const auto& [pos, info] : pieces) {
+        const auto i = pos.hash();
+        const auto m = static_cast<std::uint32_t>(1u) << static_cast<unsigned>(i);
+        b.occ_bits_ |= m;
+        if (info.color == PieceColor::BLACK) b.black_bits_ |= m;
+        else b.black_bits_ &= ~m;
+        if (info.type == PieceType::DAME) b.dame_bits_ |= m;
+        else b.dame_bits_ &= ~m;
+    }
+    return b;
 }
