@@ -1,36 +1,42 @@
 #include "Game.h"
+#include "Board.h"
 #include "Explorer.h"
+#include <algorithm>
+#include <cstddef>
+#include "Piece.h"
+#include <cstdint>
 #include <iostream>
 #include <format>
 #include <ranges>
+#include <string>
+#include <utility>
+#include <unordered_map>
 
-std::string piece_symbol(bool is_black, bool is_dame) {
+auto piece_symbol(bool is_black, bool is_dame) -> std::string {
     return is_black ? (is_dame ? "□" : "○") : (is_dame ? "■" : "●");
 }
 
-std::string board_to_string(const Board& board) {
+auto board_to_string(const Board& board) -> std::string {
     return [&]() {
         std::string str = "   ";
         for (char col : std::views::iota('A', 'I')) { str += std::format("{} ", col); }
         str += "\n";
 
-        for (auto i : std::views::iota(0, 8)) {
-            str += std::format(" {} ", i + 1);
-            for (auto j : std::views::iota(0, 8)) {
-                const bool is_light_square = (i + j) % 2 == 0;
+        for (int row_index : std::views::iota(0, 8)) {
+            str += std::format(" {} ", row_index + 1);
+            for (int col_index : std::views::iota(0, 8)) {
+                const bool is_light_square = (row_index + col_index) % 2 == 0;
 
                 const std::string symbol = [&]() -> std::string {
                     if (is_light_square) {
                         return ".";
-                    } else {
-                        // Only create Position for valid black squares
-                        const auto pos = Position{j, i};
+                    }                         // Only create Position for valid black squares
+                        const auto pos = Position{col_index, row_index};
                         if (board.is_occupied(pos)) {
                             return piece_symbol(board.is_black_piece(pos), board.is_dame_piece(pos));
-                        } else {
-                            return " ";
-                        }
-                    }
+                        }                             return " ";
+                       
+                   
                 }();
 
                 str += std::format("{} ", symbol);
@@ -41,8 +47,9 @@ std::string board_to_string(const Board& board) {
     }();
 }
 
-const std::vector<Move>& Game::get_choices() const {
-    if (!choices_dirty_) return choices_cache_;
+auto Game::get_choices() const -> const std::vector<Move>& {
+    if (!choices_dirty_) { return choices_cache_;
+}
 
     choices_cache_.clear();
 
@@ -51,9 +58,10 @@ const std::vector<Move>& Game::get_choices() const {
     // Gather and sort positions for deterministic iteration order
     std::vector<Position> from_positions;
     from_positions.reserve(moveable_pieces.size());
-    for (const auto& kv : moveable_pieces) from_positions.push_back(kv.first);
+    for (const auto& piece_pair : moveable_pieces) { from_positions.push_back(piece_pair.first);
+}
     std::sort(from_positions.begin(), from_positions.end(),
-              [](const Position& a, const Position& b) { return a.hash() < b.hash(); });
+              [](const Position& pos_a, const Position& pos_b) { return pos_a.hash() < pos_b.hash(); });
 
     bool any_capture = false;
     for (const auto& from : from_positions) {
@@ -71,19 +79,22 @@ const std::vector<Move>& Game::get_choices() const {
             tmp.push_back(TmpMove{legals.get_position(i), std::move(captured)});
         }
         // Sort: captures first handled later, but ensure deterministic order by (to, captured...)
-        std::sort(tmp.begin(), tmp.end(), [](const TmpMove& a, const TmpMove& b) {
-            if (a.to.hash() != b.to.hash()) return a.to.hash() < b.to.hash();
-            return a.captured < b.captured; // lexicographic on positions
+        std::sort(tmp.begin(), tmp.end(), [](const TmpMove& move_a, const TmpMove& move_b) {
+            if (move_a.to.hash() != move_b.to.hash()) { return move_a.to.hash() < move_b.to.hash();
+}
+            return move_a.captured < move_b.captured; // lexicographic on positions
         });
-        for (auto& m : tmp) { choices_cache_.push_back(Move{from, m.to, std::move(m.captured)}); }
+        for (auto& move_item : tmp) { choices_cache_.push_back(Move{from, move_item.to, std::move(move_item.captured)}); }
     }
 
     if (any_capture) {
         // Keep only capture moves
         std::vector<Move> capture_only;
         capture_only.reserve(choices_cache_.size());
-        for (auto& m : choices_cache_)
-            if (m.is_capture()) capture_only.push_back(std::move(m));
+        for (auto& move_item : choices_cache_) {
+            if (move_item.is_capture()) { capture_only.push_back(std::move(move_item));
+}
+}
         choices_cache_.swap(capture_only);
     }
 
@@ -97,19 +108,20 @@ void Game::push_history_state() {
     position_count[key]++;
 }
 
-std::size_t Game::get_position_key(const Board& board, PieceColor player) const noexcept {
+auto Game::get_position_key(const Board& board, PieceColor player) noexcept -> std::size_t {
     // Combine board hash with player using bit manipulation
     // Use the board hash and set/clear the highest bit based on player color
     std::size_t hash = board.hash();
+    constexpr std::size_t kPlayerBit = std::size_t(1) << (sizeof(std::size_t) * 8 - 1);
     if (player == PieceColor::BLACK) {
-        hash |= (std::size_t(1) << (sizeof(std::size_t) * 8 - 1)); // Set highest bit for BLACK
+        hash |= kPlayerBit; // Set highest bit for BLACK
     } else {
-        hash &= ~(std::size_t(1) << (sizeof(std::size_t) * 8 - 1)); // Clear highest bit for WHITE
+        hash &= ~kPlayerBit; // Clear highest bit for WHITE
     }
     return hash;
 }
 
-std::unordered_map<Position, Legals> Game::get_moveable_pieces() const {
+auto Game::get_moveable_pieces() const -> std::unordered_map<Position, Legals> {
     const auto explorer = Explorer(current_board);
     const auto pieces = current_board.get_pieces(player());
 
@@ -123,16 +135,16 @@ std::unordered_map<Position, Legals> Game::get_moveable_pieces() const {
 }
 
 void Game::execute_move(const Move& move) {
-    const auto& from = move.from;
-    const auto& to = move.to;
+    const auto& from_pos = move.from;
+    const auto& to_pos = move.to;
     const auto& captured = move.captured;
 
     // Execute the specified move
     auto new_board = Board::copy(current_board);
-    new_board.move_piece(from, to);
+    new_board.move_piece(from_pos, to_pos);
 
     // Check if the piece is promoted to a dame
-    if (to.y() == 0 || to.y() == Position::board_size - 1) { new_board.promote_piece(to); }
+    if (to_pos.y() == 0 || to_pos.y() == Position::board_size - 1) { new_board.promote_piece(to_pos); }
 
     // Remove captured pieces
     for (const auto& pos : captured) { new_board.remove_piece(pos); }
@@ -153,11 +165,12 @@ void Game::execute_move(const Move& move) {
     choices_dirty_ = true;
 }
 
-bool Game::seen(const Board& board) const noexcept {
+auto Game::seen(const Board& board) const noexcept -> bool {
     const auto key = get_position_key(board, player());
-    const auto it = position_count.find(key);
+    const auto position_iterator = position_count.find(key);
     // 3-fold repetition rule: position with same player becomes a draw if it occurs 3 times
-    return it != position_count.end() && it->second >= 3;
+    constexpr int kRepetitionLimit = 3;
+    return position_iterator != position_count.end() && position_iterator->second >= kRepetitionLimit;
 }
 
 void Game::undo_move() {
@@ -170,10 +183,10 @@ void Game::undo_move() {
     if (board_history.size() > 1) {
         // Decrease the count for the current position with current player
         const auto key = get_position_key(current_board, player());
-        auto it = position_count.find(key);
-        if (it != position_count.end()) {
-            it->second--;
-            if (it->second == 0) { position_count.erase(it); }
+        auto position_iterator = position_count.find(key);
+        if (position_iterator != position_count.end()) {
+            position_iterator->second--;
+            if (position_iterator->second == 0) { position_count.erase(position_iterator); }
         }
 
         board_history.pop_back();
@@ -203,27 +216,28 @@ void Game::print_board() const noexcept { std::cout << board_to_string(current_b
 
 void Game::print_choices() const {
     const auto& choices = get_choices();
-    for (const auto& m : choices) {
-        std::cout << "From: " << m.from.to_string() << " To: " << m.to.to_string();
-        if (!m.captured.empty()) {
+    for (const auto& move_choice : choices) {
+        std::cout << "From: " << move_choice.from.to_string() << " To: " << move_choice.to.to_string();
+        if (!move_choice.captured.empty()) {
             std::cout << " (Captures: ";
-            for (std::size_t i = 0; i < m.captured.size(); ++i) {
-                std::cout << m.captured[i].to_string();
-                if (i + 1 < m.captured.size()) std::cout << ", ";
+            for (std::size_t i = 0; i < move_choice.captured.size(); ++i) {
+                std::cout << move_choice.captured[i].to_string();
+                if (i < move_choice.captured.size() - 1) {
+                    std::cout << ", ";
+                }
             }
             std::cout << ")";
         }
-        std::cout << '\n';
+        std::cout << std::endl;
     }
 }
 
-PieceColor Game::player() const noexcept {
+auto Game::player() const noexcept -> PieceColor {
     // Player alternates based on number of moves made
     // Even number of moves (0, 2, 4, ...) = White's turn
     // Odd number of moves (1, 3, 5, ...) = Black's turn
     if (index_history.size() % 2 == 0) {
         return PieceColor::WHITE;
-    } else {
-        return PieceColor::BLACK;
-    }
+    }         return PieceColor::BLACK;
+   
 }

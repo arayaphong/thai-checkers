@@ -104,9 +104,8 @@ class Explorer {
          * @param all_sequences Output container for all found sequences
          */
         void find_capture_sequences_recursive(
-                Board board, // Copy by value for simulation
-                const Position& current_pos, std::uint64_t captured_mask, CaptureSequence current_sequence,
-                std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const;
+      Board board, const Position& current_pos, std::uint64_t captured_mask, const CaptureSequence& current_sequence,
+      std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const;
 
         /**
          * @brief Gets all possible non-capture moves for a piece at the given position.

@@ -1,24 +1,30 @@
 #include "Explorer.h"
+#include "Legals.h"
+#include "Position.h"
+#include "Board.h"
+#include <optional>
+#include <cstdint>
+#include <iterator>
 #include <stdexcept>
-#include <array>
 #include <algorithm>
 #include <ranges>
-#include <concepts>
-#include <span>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
-Legals Explorer::find_valid_moves(const Position& from) const {
+auto Explorer::find_valid_moves(const Position& from) const -> Legals {
     if (!board.is_occupied(from)) [[unlikely]] {
         throw std::invalid_argument("No piece at position");
     }
 
+    constexpr int kMaxPossibleSequences = 64;
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash> unique_sequences;
-    unique_sequences.reserve(64);
+    unique_sequences.reserve(kMaxPossibleSequences);
     const CaptureSequence empty_sequence;
-    find_capture_sequences_recursive(board, from, 0ull, empty_sequence, unique_sequences);
+    find_capture_sequences_recursive(board, from, 0ULL, empty_sequence, unique_sequences);
 
     CaptureSequences capture_sequences;
-    for (auto& kv : unique_sequences) { capture_sequences.insert(std::move(kv.second)); }
+    for (auto& sequence_pair : unique_sequences) { capture_sequences.insert(std::move(sequence_pair.second)); }
 
     if (!capture_sequences.empty()) { return Legals(capture_sequences); }
 
@@ -29,10 +35,10 @@ Legals Explorer::find_valid_moves(const Position& from) const {
 
 
 // Static member definition
-constexpr std::array<AnalyzerDirectionDelta, 4> Explorer::dir_deltas;
 
-const std::vector<AnalyzerDirectionDelta>& Explorer::get_valid_directions(const Board& board,
-                                                                          const Position& pos) noexcept {
+
+auto Explorer::get_valid_directions(const Board& board,
+                                                                          const Position& pos) noexcept -> const std::vector<AnalyzerDirectionDelta>& {
     const bool is_dame = board.is_dame_piece(pos);
     const bool is_black = board.is_black_piece(pos);
 
@@ -58,13 +64,14 @@ const std::vector<AnalyzerDirectionDelta>& Explorer::get_valid_directions(const 
 }
 
 
-std::optional<AnalyzerCaptureMove> Explorer::find_capture_in_direction(const Board& board, const Position& pos,
+auto Explorer::find_capture_in_direction(const Board& board, const Position& pos,
                                                                        const AnalyzerDirectionDelta& delta,
-                                                                       bool is_dame) noexcept {
+                                                                       bool is_dame) noexcept -> std::optional<AnalyzerCaptureMove> {
+    try {
     const bool player_is_black = board.is_black_piece(pos);
     if (is_dame) {
         // Dame logic: search along the direction for an opponent piece to capture
-        for (const auto step : std::views::iota(1u, 8u)) [[likely]] { // C++20 ranges view
+        for (const auto step : std::views::iota(1U, 8U)) [[likely]] { // C++20 ranges view
             const auto [current_col, current_row] =
                 std::pair{pos.x() + delta.col * static_cast<int>(step), pos.y() + delta.row * static_cast<int>(step)};
 
@@ -72,70 +79,52 @@ std::optional<AnalyzerCaptureMove> Explorer::find_capture_in_direction(const Boa
                 break; // Reached board boundary
             }
 
-            const Position current_pos(current_col, current_row);
-            if (!board.is_occupied(current_pos)) {
-                continue; // Empty square, keep searching
-            }
+            const auto current_pos = Position{current_col, current_row};
+            if (board.is_occupied(current_pos)) {
+                if (board.is_black_piece(current_pos) != player_is_black) {
+                    // Found an opponent piece, check if we can land behind it
+                    const auto [landing_col, landing_row] =
+                        std::pair{current_col + delta.col, current_row + delta.row};
 
-            // Found a piece - check if it's an opponent piece
-            const bool is_opponent = board.is_black_piece(current_pos) != player_is_black;
-            if (!is_opponent) {
-                break; // Friendly piece blocks the path
-            }
-
-            // Found opponent piece - check if we can land beyond it
-            const auto [landing_col, landing_row] = std::pair{current_col + delta.col, current_row + delta.row};
-            if (Position::is_valid(landing_col, landing_row)) {
-                const Position landing_pos(landing_col, landing_row);
-                if (!board.is_occupied(landing_pos)) {
-                    return AnalyzerCaptureMove{.captured_piece = current_pos, .landing_position = landing_pos};
+                    if (Position::is_valid(landing_col, landing_row) && !board.is_occupied({landing_col, landing_row})) {
+                        // Valid capture move
+                        return AnalyzerCaptureMove{current_pos, Position{landing_col, landing_row}};
+                    }
                 }
+                break; // Blocked by a piece
             }
-            break;
         }
     } else {
-        // Pion logic: check the adjacent square in the given direction
-        const auto [adjacent_col, adjacent_row] = std::pair{pos.x() + delta.col, pos.y() + delta.row};
-        if (!Position::is_valid(adjacent_col, adjacent_row)){
-            return std::nullopt; // Can't capture outside board
-        }
+        // Pion logic: check for a capture in the given direction
+        const auto [capture_col, capture_row] = std::pair{pos.x() + delta.col, pos.y() + delta.row};
+        const auto [landing_col, landing_row] = std::pair{pos.x() + 2 * delta.col, pos.y() + 2 * delta.row};
 
-        const Position adjacent_pos(adjacent_col, adjacent_row);
-        if (!board.is_occupied(adjacent_pos)) {
-            return std::nullopt; // No piece to capture
-        }
+        if (Position::is_valid(capture_col, capture_row) && Position::is_valid(landing_col, landing_row)) {
+            const auto capture_pos = Position{capture_col, capture_row};
+            const auto landing_pos = Position{landing_col, landing_row};
 
-        // Check if it's an opponent piece
-        const bool is_opponent = board.is_black_piece(adjacent_pos) != player_is_black;
-        if (!is_opponent) {
-            return std::nullopt; // Can't capture friendly piece
+            if (board.is_occupied(capture_pos) && board.is_black_piece(capture_pos) != player_is_black &&
+                !board.is_occupied(landing_pos)) {
+                return AnalyzerCaptureMove{capture_pos, landing_pos};
+            }
         }
-
-        // Check if we can land beyond the captured piece
-        const auto [landing_col, landing_row] = std::pair{adjacent_col + delta.col, adjacent_row + delta.row};
-        if (!Position::is_valid(landing_col, landing_row)) {
-            return std::nullopt; // Landing position is outside board
-        }
-
-        // Create landing position
-        const Position landing_pos(landing_col, landing_row);
-        if (board.is_occupied(landing_pos)) {
-            return std::nullopt; // Landing square is occupied
-        }
-
-        return AnalyzerCaptureMove{.captured_piece = adjacent_pos, .landing_position = landing_pos};
     }
 
     return std::nullopt;
+    } catch (...) {
+        return std::nullopt;
+    }
 }
 
 
+// NOLINTNEXTLINE(misc-no-recursion)
 void Explorer::find_capture_sequences_recursive(
-    Board board, const Position& current_pos, std::uint64_t captured_mask, CaptureSequence current_sequence,
+    Board board, const Position& current_pos, std::uint64_t captured_mask, const CaptureSequence& current_sequence,
     std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const {
 
+    constexpr int kMaxCapturesPerTurn = 4;
     std::vector<AnalyzerCaptureMove> valid_captures;
-    valid_captures.reserve(4);
+    valid_captures.reserve(kMaxCapturesPerTurn);
     const auto& valid_directions = get_valid_directions(board, current_pos);
     const bool is_dame = board.is_dame_piece(current_pos);
 
@@ -152,8 +141,8 @@ void Explorer::find_capture_sequences_recursive(
     // If no captures are available, finalize this sequence if not empty
     if (valid_captures.empty()) {
         if (!current_sequence.empty()) {
-            SequenceKey key{.captured_mask = captured_mask, .final_pos = current_pos};
-            unique_sequences.try_emplace(key, std::move(current_sequence));
+            SequenceKey const key{.captured_mask = captured_mask, .final_pos = current_pos};
+            unique_sequences.try_emplace(key, current_sequence);
         }
         return;
     }
@@ -168,20 +157,20 @@ void Explorer::find_capture_sequences_recursive(
         // Apply capture
         new_board.remove_piece(captured_piece);
         new_board.move_piece(current_pos, landing_position);
-        new_mask |= (1ull << captured_piece.hash());
+        new_mask |= (1ULL << captured_piece.hash());
 
         // Sequence bookkeeping
         new_sequence.emplace_back(captured_piece);
         new_sequence.emplace_back(landing_position);
 
         // Recurse
-        find_capture_sequences_recursive(std::move(new_board), landing_position, new_mask, std::move(new_sequence),
+        find_capture_sequences_recursive(new_board, landing_position, new_mask, new_sequence,
                                          unique_sequences);
     }
 }
 
 
-Positions Explorer::find_regular_moves(const Position& from) const {
+auto Explorer::find_regular_moves(const Position& from) const -> Positions {
     const auto& valid_directions = get_valid_directions(board, from);
     const bool is_dame = board.is_dame_piece(from);
 
@@ -190,7 +179,7 @@ Positions Explorer::find_regular_moves(const Position& from) const {
         if (is_dame) {
             // Dame can move multiple squares in a direction until blocked
             // Use ranges::iota for modern iteration
-            for (const auto step : std::views::iota(1u, 8u)) {
+            for (const auto step : std::views::iota(1U, 8U)) {
                 const auto [new_col, new_row] = std::pair{from.x() + delta.col * static_cast<int>(step),
                                                           from.y() + delta.row * static_cast<int>(step)};
 

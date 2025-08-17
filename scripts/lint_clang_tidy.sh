@@ -31,6 +31,8 @@ Options:
       --fix              Apply automatic fixes (-fix -fix-errors)
       --export-fixes F   Write YAML fixes to file F (implies no parallel)
       --list             Only list the files that would be linted, then exit
+  --full             Disable concise defaults (show all diagnostics as before)
+  --concise          Force concise mode (default unless --full is given)
   -v, --verbose          Verbose output
   -h, --help             Show this help
 
@@ -60,6 +62,8 @@ APPLY_FIX=0
 EXPORT_FIXES=""
 LIST_ONLY=0
 VERBOSE=0
+FULL_MODE=0
+FORCE_CONCISE=0
 
 EXTRA_CLA_ARGS=()
 
@@ -86,6 +90,10 @@ while [[ $# -gt 0 ]]; do
         EXPORT_FIXES="$1"; PARALLEL=0;;
       --list)
         LIST_ONLY=1;;
+      --full)
+        FULL_MODE=1;;
+      --concise)
+        FORCE_CONCISE=1;;
       -v|--verbose)
         VERBOSE=1;;
       -h|--help)
@@ -196,6 +204,37 @@ if [[ -n ${CLANG_TIDY_EXTRA_ARGS:-} ]]; then
   EXTRA_CLA_ARGS+=( ${CLANG_TIDY_EXTRA_ARGS} )
 fi
 
+# Provide concise defaults unless user opted into full mode or already specified checks/header-filter.
+if [[ $FULL_MODE -eq 0 && -f .clang-tidy ]]; then
+  # A project-wide .clang-tidy is present; do not inject overrides unless user forces custom args.
+  :
+elif [[ $FULL_MODE -eq 0 ]]; then
+  has_checks=0; has_header_filter=0; has_warnings_as_errors=0
+  for a in "${EXTRA_CLA_ARGS[@]}"; do
+    [[ $a == -*checks* ]] && has_checks=1
+    [[ $a == -header-filter=* ]] && has_header_filter=1
+    [[ $a == -*warnings-as-errors* ]] && has_warnings_as_errors=1
+  done
+  if [[ $has_checks -eq 0 ]]; then
+    # Focus on a curated subset of high-signal checks. Users can pass -- -checks='*' or --full to override.
+    EXTRA_CLA_ARGS+=("-checks=readability-identifier-length,readability-magic-numbers,misc-no-recursion,misc-use-anonymous-namespace,modernize-use-nullptr,modernize-use-override")
+  fi
+  if [[ $has_header_filter -eq 0 ]]; then
+    # Restrict diagnostics to project sources under src/ and include/.
+    EXTRA_CLA_ARGS+=("-header-filter=^(src|include)/")
+  fi
+  if [[ $has_warnings_as_errors -eq 0 ]]; then
+    # Treat selected warnings as errors to fail CI early; configurable.
+    EXTRA_CLA_ARGS+=("-warnings-as-errors=readability-magic-numbers,readability-identifier-length")
+  fi
+  # Reduce noise from notes in third-party headers unless verbose.
+  if [[ $VERBOSE -eq 0 ]]; then
+    EXTRA_CLA_ARGS+=("-extra-arg=-fno-color-diagnostics")
+  fi
+  # Suppress file banners & notes for brevity.
+  EXTRA_CLA_ARGS+=("-quiet")
+fi
+
 [[ $VERBOSE -eq 1 ]] && log "Using $CLANG_TIDY_BIN with args: ${ARGS[*]} ${EXTRA_CLA_ARGS[*]}"
 
 run_one() {
@@ -203,12 +242,31 @@ run_one() {
   if [[ $VERBOSE -eq 1 ]]; then
     echo "==> $file"
   fi
-  "$CLANG_TIDY_BIN" "${ARGS[@]}" "$file" "${EXTRA_CLA_ARGS[@]}"
+  # The grep is to filter out warnings from clang-tidy about unsupported options
+  # that might be present in a user's .ccls file, which some setups use.
+  "$CLANG_TIDY_BIN" "${ARGS[@]}" "$file" "${EXTRA_CLA_ARGS[@]}" 2> >(grep -v "warning: ignoring unsupported" >&2)
 }
 
 STATUS=0
 if [[ $PARALLEL -eq 1 ]]; then
-  printf '%s\n' "${FILES_TO_LINT[@]}" | xargs -P "$JOBS" -I{} bash -c 'set -euo pipefail; "$0" "$1"' "$CLANG_TIDY_BIN" {} 2> >(grep -v "warning: ignoring unsupported" >&2) || STATUS=$?
+  # To run in parallel, we need to make the `run_one` function and its required
+  # variables (especially the arrays ARGS and EXTRA_CLA_ARGS) available to the
+  # subshells that xargs will spawn.
+  export -f run_one
+  export CLANG_TIDY_BIN VERBOSE
+
+  # The `declare -p` command prints the definition of a variable, which we can
+  # then `eval` in the subshell to faithfully recreate it, including arrays.
+  ARGS_DEF=$(declare -p ARGS)
+  EXTRA_CLA_ARGS_DEF=$(declare -p EXTRA_CLA_ARGS)
+  export ARGS_DEF EXTRA_CLA_ARGS_DEF
+
+  printf '%s\n' "${FILES_TO_LINT[@]}" | xargs -P "$JOBS" -I{} bash -c '
+    set -euo pipefail
+    eval "$ARGS_DEF"
+    eval "$EXTRA_CLA_ARGS_DEF"
+    run_one "{}"
+  ' || STATUS=$?
 else
   for f in "${FILES_TO_LINT[@]}"; do
     run_one "$f" || STATUS=$?
