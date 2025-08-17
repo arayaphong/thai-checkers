@@ -1,0 +1,23 @@
+Checks: >
+  -*,
+  bugprone-*,
+  performance-*,
+  modernize-*,
+  readability-*,
+  clang-analyzer-*,
+  misc-*
+
+WarningsAsErrors: ''
+CheckOptions:
+  - key: readability-identifier-naming.Enabled
+    value: 'false'
+  - key: readability-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;8;32;64;128;255'
+  - key: modernize-use-trailing-return-type.MinTernaryOperatorWidth
+    value: '1000'
+  - key: modernize-use-trailing-return-type.UseAuto
+    value: 'No'
+
+HeaderFilterRegex: '^(include|src)/'
+FormatStyle: none
+ExtraArgs: ['-std=c++20', '-fopenmp']

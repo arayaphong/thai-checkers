@@ -7,275 +7,51 @@
 
 #include "Game.h"
 
-TEST_CASE("Game plays to completion with first-move selector", "[selector][determinism]")
-{
+TEST_CASE("Game plays to completion with first-move selector", "[selector][determinism]") {
     Game game;
-    while (game.move_count() != 0) {
-        game.select_move(0);
-    }
-    const auto &move_sequence = game.get_move_sequence();
-    const std::vector<std::size_t> expected{
-        18374687574904995840ull, 0ull,
-        18307133580494438400ull, 0ull,
-        18307134611286589440ull, 0ull,
-        18302912486635929600ull, 0ull,
-        18302912551060439040ull, 0ull,
-        18302648668269772800ull, 0ull,
-        18302650729854074880ull, 0ull,
-        18302632175594307584ull, 0ull,
-        18302633129069707264ull, 0ull,
-        18167525140248592384ull, 0ull,
-        18167529263417196544ull, 0ull,
-        18158803539139166208ull, 0ull,
-        18158803796837203968ull, 0ull,
-        18158539914046537728ull, 0ull,
-        18158548160383746048ull, 0ull,
-        18158529606124765184ull, 0ull,
-        18158530121520971776ull, 0ull,
-        18158529988377051137ull, 0ull,
-        18158531019169202177ull, 0ull,
-        18158599184588931104ull, 0ull,
-        18159087367751663616ull, 0ull,
-        17888871390109433856ull, 0ull,
-        18158524417798242304ull, 0ull,
-        13294636820237058048ull, 0ull,
-        13294638744382406656ull, 0ull,
-        13259735847270285312ull, 0ull,
-        13259739695560982528ull, 0ull,
-        13258684164398317568ull, 0ull,
-        13259737496537726976ull, 0ull,
-        12719305541253267456ull, 0ull,
-        13258611596630884352ull, 0ull,
-        12177747686062489600ull, 0ull,
-        12177764178736906240ull, 0ull,
-        12110210184326348800ull, 0ull,
-        12110276155024015360ull, 0ull,
-        12106054030373355520ull, 0ull,
-        12114762162464817152ull, 0ull,
-        9880976747289575424ull, 0ull,
-        10952833458603229192ull, 0ull,
-        2017691797900951568ull, 0ull,
-        2017823739296284688ull, 0ull,
-        1747607761654054928ull, 0ull,
-        1748100342863298576ull, 0ull,
-        1729558178771632136ull, 0ull,
-        1730543341190119432ull, 0ull,
-        1730509256329658376ull, 0ull,
-        1747397754932297736ull, 0ull,
-        1747396724140146696ull, 0ull,
-        1873497513706520584ull, 0ull,
-        1873497449282011145ull, 0ull,
-        4035225270419849229ull, 0ull,
-        4035225334844358669ull, 0ull,
-        12682136619395710991ull, 0ull,
-        12682136554971201551ull, 0ull,
-        11529215084724092943ull, 0ull,
-        11529215149148536847ull, 0ull,
-        11529215664544677903ull, 0ull,
-        11529215600120168463ull, 0ull,
-        11529215067544223759ull, 0ull,
-        11529215131968667663ull, 0ull,
-        11529215389666770959ull, 0ull,
-        11529215325242261519ull, 0ull,
-        11529215058954289167ull, 0ull,
-        11529215123378733071ull, 0ull,
-        11529215252227817487ull, 0ull,
-        11529215187803308047ull, 0ull,
-        11529215058954289167ull
-    };
+    while (game.move_count() != 0) { game.select_move(0); }
+    const auto& move_sequence = game.get_move_sequence();
+    const std::vector<uint8_t> expected = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     REQUIRE(move_sequence == expected);
 }
 
-TEST_CASE("Game plays to completion with last-move selector", "[selector][determinism]")
-{
+TEST_CASE("Game plays to completion with last-move selector", "[selector][determinism]") {
     Game game;
-    while (game.move_count() != 0)
-    {
-        game.select_move(game.move_count() - 1);
-    }
-    const auto &move_sequence = game.get_move_sequence();
-    const std::vector<std::size_t> expected{
-        18374687574904995840ull, 6ull,
-        17834255619620536320ull, 6ull,
-        17834263865957744640ull, 7ull,
-        9187352581406392320ull, 7ull,
-        9187484522801725440ull, 6ull,
-        8917268545159495680ull, 8ull,
-        8919379607484825600ull, 6ull,
-        4595923965209149440ull, 6ull,
-        4595928088377753600ull, 5ull,
-        4460820099556638720ull, 8ull,
-        4460956438998482944ull, 6ull,
-        2299228617860644864ull, 7ull,
-        2300213780279132160ull, 1ull,
-        2263129452093308928ull, 7ull,
-        2296906449323753472ull, 1ull,
-        1685542799874654208ull, 6ull,
-        1685544861458956288ull, 0ull,
-        1685472431128379392ull, 1ull,
-        1685473384611119104ull, 6ull,
-        1433271805478371328ull, 5ull,
-        1433305890338832384ull, 6ull,
-        1365751895928274944ull, 6ull,
-        1366279661509607424ull, 1ull,
-        1347737497417744384ull, 4ull,
-        1347738528209895424ull, 0ull,
-        1347702313045131264ull, 3ull,
-        1347702828441468928ull, 7ull,
-        266838917872549888ull, 3ull,
-        266847164209758208ull, 6ull,
-        140746374643384320ull, 3ull,
-        140878316038717440ull, 0ull,
-        139620474736017408ull, 2ull,
-        139621007312093184ull, 0ull,
-        139611678642864130ull, 0ull,
-        139611811787046913ull, 13ull,
-        105834814581768193ull, 1ull,
-        105836876166070273ull, 0ull,
-        105869844334772226ull
-    };
+    while (game.move_count() != 0) { game.select_move(game.move_count() - 1); }
+    const auto& move_sequence = game.get_move_sequence();
+    const std::vector<uint8_t> expected = {6, 6, 7, 7, 6, 8, 6, 6, 5, 8, 6, 7, 1, 7, 1, 6,  0, 1, 6,
+                                           5, 6, 6, 1, 4, 0, 3, 7, 3, 6, 3, 0, 2, 0, 0, 13, 1, 0};
     REQUIRE(move_sequence == expected);
 }
 
-TEST_CASE("Game plays to completion with middle-move selector", "[selector][determinism]")
-{
+TEST_CASE("Game plays to completion with middle-move selector", "[selector][determinism]") {
     Game game;
-    while (true)
-    {
-        const auto &move_count = game.move_count();
-        if (move_count == 0)
-            break;
-        game.select_move(move_count / 2);
+    while (true) {
+        const auto mc = game.move_count();
+        if (mc == 0) break;
+        game.select_move(mc / 2);
     }
-
-    const auto &move_sequence = game.get_move_sequence();
-    const std::vector<std::size_t> expected{
-        18374687574904995840ull, 3ull,
-        18248586785338621952ull, 3ull,
-        18248588709483970560ull, 4ull,
-        17996387130351222784ull, 4ull,
-        17996390978641920000ull, 5ull,
-        17933340583858733056ull, 5ull,
-        17933341545931407360ull, 6ull,
-        16852477635362488320ull, 6ull,
-        16852494128036904960ull, 5ull,
-        16818717130831626240ull, 6ull,
-        16818718161623777280ull, 5ull,
-        16751164167213219840ull, 6ull,
-        16751164682609295360ull, 6ull,
-        16210732727324835840ull, 6ull,
-        16210766812185296896ull, 6ull,
-        16175863915073175552ull, 6ull,
-        16175932084794097664ull, 0ull,
-        16174738015165284352ull, 5ull,
-        16174746261503016960ull, 7ull,
-        16157857762900377600ull, 6ull,
-        16157923733598044160ull, 6ull,
-        16149479484296724480ull, 1ull,
-        16157853364912586752ull, 6ull,
-        13924067949736820736ull, 0ull,
-        14995924661050999808ull, 5ull,
-        14991702536400339968ull, 1ull,
-        14995889476657938944ull, 4ull,
-        14993778414332609024ull, 7ull,
-        15061332408743166464ull, 4ull,
-        10593761578425189376ull, 4ull,
-        10593761836123227136ull, 0ull,
-        10593759379358155268ull, 3ull,
-        10593759645646258690ull, 0ull,
-        10593761552589717762ull, 2ull,
-        10594025435380908290ull, 0ull,
-        12827527176536653920ull, 4ull,
-        11674610069974483010ull, 0ull,
-        11674465209317392416ull, 1ull,
-        11674465342461378592ull, 5ull,
-        11548364552895004704ull, 1ull,
-        11548366614479372320ull, 5ull,
-        9247027204893048848ull, 1ull,
-        9247095374613970960ull, 0ull,
-        9245901304986075144ull, 0ull,
-        9246033246381408264ull, 5ull,
-        9313587240791965712ull, 1ull,
-        9315698303117295632ull, 8ull,
-        9243711077823807492ull, 0ull,
-        9277488075029610500ull, 0ull,
-        9817849661568843784ull
-    };
+    const auto& move_sequence = game.get_move_sequence();
+    const std::vector<uint8_t> expected = {3, 3, 4, 4, 5, 5, 6, 6, 5, 6, 5, 6, 6, 6, 6, 6, 0, 5, 7, 6, 6, 1, 6, 0, 5,
+                                           1, 4, 7, 4, 4, 0, 3, 0, 2, 0, 4, 0, 1, 5, 1, 5, 1, 0, 0, 5, 1, 8, 0, 0};
     REQUIRE(move_sequence == expected);
 }
 
-TEST_CASE("Game plays to completion with alternating selector", "[selector][determinism]")
-{
+TEST_CASE("Game plays to completion with alternating selector", "[selector][determinism]") {
     Game game;
     int state = 0;
-    while (true)
-    {
-        const auto &move_count = game.move_count();
-        if (move_count == 0)
-            break;
-        const auto select_index = (state % 2 == 0) ? move_count - 1 : 0;
+    while (true) {
+        const auto mc = game.move_count();
+        if (mc == 0) break;
+        const auto select_index = (state % 2 == 0) ? mc - 1 : 0;
         game.select_move(select_index);
-    ++state;
+        ++state;
     }
-    const auto &move_sequence = game.get_move_sequence();
-    const std::vector<std::size_t> expected{
-        18374687574904995840ull, 6ull,
-        17834255619620536320ull, 0ull,
-        17834256650412687360ull, 7ull,
-        9187345365861335040ull, 0ull,
-        9187345430285844480ull, 6ull,
-        8917129452643614720ull, 0ull,
-        8917131514227916800ull, 7ull,
-        4593675871952240640ull, 0ull,
-        4593676000801259520ull, 6ull,
-        4458568011980144640ull, 0ull,
-        4458572135148748800ull, 7ull,
-        2296844314010910720ull, 0ull,
-        2296844571708948480ull, 6ull,
-        2229290577298391040ull, 0ull,
-        2229298823635599360ull, 7ull,
-        1148434913066680320ull, 0ull,
-        1148435428462755840ull, 6ull,
-        1114658431257477120ull, 0ull,
-        1114674923931893760ull, 7ull,
-        574242968647434240ull, 0ull,
-        574243999439585280ull, 6ull,
-        539341102327463936ull, 0ull,
-        539375187187924992ull, 7ull,
-        287173608055177216ull, 0ull,
-        287174570127851520ull, 6ull,
-        269723121571790848ull, 0ull,
-        2430852808912609280ull, 5ull,
-        2422408559611289600ull, 0ull,
-        115580387450617984ull, 4ull,
-        52529992667431040ull, 0ull,
-        52564077527892096ull, 0ull,
-        51967042713747584ull, 0ull,
-        52000028062580864ull, 5ull,
-        17097130950459520ull, 0ull,
-        33844892123464704ull, 5ull,
-        25400642822145024ull, 0ull,
-        25402566967624704ull, 4ull,
-        21180442316964864ull, 0ull,
-        29888574387978752ull, 3ull,
-        27777512062648832ull, 0ull,
-        29884176318398720ull, 2ull,
-        29391595109155072ull, 0ull,
-        30444927233884288ull, 1ull,
-        30443965161275520ull, 0ull,
-        30447813451972736ull, 1ull,
-        30447684602953857ull, 0ull,
-        30513655300620417ull, 5ull,
-        30654384198582408ull, 0ull,
-        30900674803466372ull, 2ull,
-        30764335361818753ull, 0ull,
-        30896276757151873ull, 1ull,
-        301037487594078240ull, 0ull,
-        305259612244738080ull, 7ull,
-        9240401272947802144ull, 0ull,
-        9257289771550441504ull, 0ull,
-        78953730967797768ull, 0ull,
-        2308235546516193284ull
-    };
+    const auto& move_sequence = game.get_move_sequence();
+    const std::vector<uint8_t> expected = {6, 0, 7, 0, 6, 0, 7, 0, 6, 0, 7, 0, 6, 0, 7, 0, 6, 0, 7,
+                                           0, 6, 0, 7, 0, 6, 0, 5, 0, 4, 0, 0, 0, 5, 0, 5, 0, 4, 0,
+                                           3, 0, 2, 0, 1, 0, 1, 0, 5, 0, 2, 0, 1, 0, 7, 0, 0, 0};
     REQUIRE(move_sequence == expected);
 }

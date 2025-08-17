@@ -1,190 +1,112 @@
+// Minimal runner for simplified Traversal
+#include "Traversal.h"
+#include <algorithm>
 #include <chrono>
-#include <cassert>
-#include <cstring>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
-#include <random>
-#include <vector>
-#include <sys/resource.h>
-#include <unistd.h>
+#include <format>
+#include <limits>
+#include <string>
+#include <string_view>
+#include <optional>
 
-#include "Game.h"
+std::optional<std::chrono::milliseconds> parse_timeout(std::string_view arg) {
+    if (arg.empty()) return std::nullopt;
 
-namespace
-{
-    struct usage_snapshot
-    {
-        double user_seconds{0.0};
-        double system_seconds{0.0};
-        long max_rss_kb{0};
-        size_t current_rss_kb{0};
-    };
-
-    // Global flag to control verbosity for tests/benchmarks
-    bool g_quiet = false;
-
-    usage_snapshot capture_usage()
-    {
-        usage_snapshot snap;
-        rusage ru{};
-        if (getrusage(RUSAGE_SELF, &ru) == 0)
-        {
-            snap.user_seconds = static_cast<double>(ru.ru_utime.tv_sec) + ru.ru_utime.tv_usec / 1'000'000.0;
-            snap.system_seconds = static_cast<double>(ru.ru_stime.tv_sec) + ru.ru_stime.tv_usec / 1'000'000.0;
-            // On Linux ru_maxrss is in kilobytes
-            snap.max_rss_kb = ru.ru_maxrss;
+    try {
+        // Check for 'ms' suffix (milliseconds) FIRST - before checking 's'
+        if (arg.ends_with("ms")) {
+            const auto ms_str = arg.substr(0, arg.length() - 2);
+            const long long ms = std::stoll(std::string(ms_str));
+            return std::chrono::milliseconds(ms);
         }
-        // Get current resident set size (in KB)
-        std::ifstream statm("/proc/self/statm");
-        if (statm)
-        {
-            size_t size_pages = 0, resident_pages = 0;
-            statm >> size_pages >> resident_pages; // we only need the first two
-            long page_kb = sysconf(_SC_PAGESIZE) / 1024;
-            snap.current_rss_kb = resident_pages * static_cast<size_t>(page_kb);
-        }
-        return snap;
-    }
-} // namespace
 
-// Global RNG with optional seeding for reproducibility
-namespace
-{
-    std::mt19937 g_rng{std::random_device{}()};
+        // Check for 's' suffix (seconds)
+        if (arg.ends_with('s')) {
+            const auto seconds_str = arg.substr(0, arg.length() - 1);
+            const double seconds = std::stod(std::string(seconds_str));
+            return std::chrono::milliseconds(static_cast<long long>(seconds * 1000));
+        }
+
+        // Default to seconds if no suffix
+        const double seconds = std::stod(std::string(arg));
+        return std::chrono::milliseconds(static_cast<long long>(seconds * 1000));
+    } catch (const std::exception&) { return std::nullopt; }
 }
 
-void random_game_play()
-{
+void print_usage(const char* program_name) {
+    std::cout << std::format("Usage: {} [--timeout DURATION]\n", program_name);
+    std::cout << "Options:\n";
+    std::cout << "  --timeout DURATION  Set timeout duration (e.g., 10s, 12.5s, 5000ms)\n";
+    std::cout << "                      Default: 10s\n";
+    std::cout << "  --help             Show this help message\n";
+}
+
+int main(int argc, char** argv) {
+    // Default timeout: 10 seconds
+    std::chrono::milliseconds timeout{10000};
+
+    // Parse command line arguments
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg = argv[i];
+
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        } else if (arg == "--timeout") {
+            if (i + 1 >= argc) {
+                std::cerr << "Error: --timeout requires a duration argument\n";
+                print_usage(argv[0]);
+                return 1;
+            }
+
+            const auto parsed_timeout = parse_timeout(argv[++i]);
+            if (!parsed_timeout) {
+                std::cerr << std::format("Error: Invalid timeout format '{}'\n", argv[i]);
+                std::cerr << "Expected format: 10s, 12.5s, or 5000ms\n";
+                return 1;
+            }
+
+            timeout = *parsed_timeout;
+        } else {
+            std::cerr << std::format("Error: Unknown argument '{}'\n", arg);
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+
+    std::cout << std::format("Running Thai Checkers analysis with timeout: {}ms\n", timeout.count());
+
+    uint64_t draws = 0, black = 0, white = 0;
+    uint64_t min_moves = std::numeric_limits<uint64_t>::max();
+    uint64_t max_moves = 0;
+
+    Traversal traversal(
+        [&](const Traversal::ResultEvent& ev) {
+            const uint64_t moves = static_cast<uint64_t>(ev.history.size());
+            if (!ev.winner) ++draws;
+            else if (static_cast<int>(*ev.winner) == 0) ++black;
+            else ++white;
+            min_moves = std::min(min_moves, moves);
+            max_moves = std::max(max_moves, moves);
+        },
+        [&](const Traversal::ProgressEvent& ev) {
+            std::cout << std::format("Progress: {} games completed\n", ev.games);
+        });
+
     Game game;
-    int state = 0;
+    traversal.traverse_for(game, timeout);
 
-    while (true)
-    {
-        const char *current_player = (state % 2 == 0) ? "White" : "Black";
-        if (!g_quiet)
-        {
-            std::cout << "[State " << state << "] " << current_player << " Turn:" << std::endl;
-            game.print_board();
-            std::cout << std::endl;
-        }
-
-        const std::size_t choices = game.move_count();
-        if (choices == 0)
-        {
-            std::cout << "No more moves available. Game over!" << std::endl;
-            const char *winner = (state % 2 == 0) ? "Black" : "White";
-            std::cout << "Victory: " << winner << " wins!" << std::endl;
-            break;
-        }
-
-        game.print_choices();
-
-        // Randomly select an available move for demonstration (seedable via --seed)
-        std::uniform_int_distribution<std::size_t> dist(0, choices - 1);
-        game.select_move(dist(g_rng));
-
-        ++state;
-    }
-
-    const auto &move_sequence = game.get_move_sequence();
-    std::cout << "Move history: ";
-    for (std::size_t i = 1; i < move_sequence.size(); i += 2)
-    {
-        std::cout << move_sequence[i] << " ";
-    }
-    std::cout << std::endl;
-}
-
-void random_game_play_quiet()
-{
-    Game game;
-    while (true)
-    {
-        const std::size_t move_count = game.move_count();
-        if (move_count == 0)
-        {
-            break;
-        }
-
-        std::uniform_int_distribution<std::size_t> dist(0, move_count - 1);
-        game.select_move(dist(g_rng));
-    }
-}
-
-int smoke_test(int argc, char **argv)
-{
-    std::chrono::seconds test_duration{10};
-    // Very small, simple CLI: --seconds N, -s N, --quiet
-    for (int i = 1; i < argc; ++i)
-    {
-        if (std::strcmp(argv[i], "--quiet") == 0 || std::strcmp(argv[i], "-q") == 0)
-        {
-            g_quiet = true;
-        }
-        else if ((std::strcmp(argv[i], "--seconds") == 0 || std::strcmp(argv[i], "-s") == 0) && i + 1 < argc)
-        {
-            const int n = std::atoi(argv[++i]);
-            if (n > 0)
-                test_duration = std::chrono::seconds{n};
-        }
-        else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
-        {
-            const unsigned long long seed = std::strtoull(argv[++i], nullptr, 10);
-            g_rng.seed(static_cast<std::mt19937::result_type>(seed));
-        }
-    }
-    const auto wall_start = std::chrono::steady_clock::now();
-    const auto usage_start = capture_usage();
-    std::size_t games_played = 0;
-
-    if (g_quiet)
-    {
-        while (std::chrono::steady_clock::now() - wall_start < test_duration)
-        {
-            random_game_play_quiet();
-            ++games_played;
-        }
-    }
-    else
-    {
-        while (std::chrono::steady_clock::now() - wall_start < test_duration)
-        {
-            random_game_play();
-            ++games_played;
-        }
-    }
-
-    const auto wall_end = std::chrono::steady_clock::now();
-    const auto usage_end = capture_usage();
-
-    const auto wall_seconds = std::chrono::duration<double>(wall_end - wall_start).count();
-    const double cpu_user = usage_end.user_seconds - usage_start.user_seconds;
-    const double cpu_system = usage_end.system_seconds - usage_start.system_seconds;
-    const double cpu_total = cpu_user + cpu_system;
-    const double games_per_second = wall_seconds > 0.0 ? games_played / wall_seconds : 0.0;
-    const double cpu_util_percent = wall_seconds > 0.0 ? (cpu_total / wall_seconds) * 100.0 : 0.0;
-
-    std::cout << "\n==== Profiling Summary ====\n";
-    std::cout << "Wall time           : " << wall_seconds << " s\n";
-    std::cout << "Games played        : " << games_played << "\n";
-    std::cout << "Games / second      : " << games_per_second << "\n";
-    std::cout << "CPU user time       : " << cpu_user << " s\n";
-    std::cout << "CPU system time     : " << cpu_system << " s\n";
-    std::cout << "CPU total time      : " << cpu_total << " s\n";
-    std::cout << "CPU utilization     : " << cpu_util_percent << " % (total CPU time / wall)\n";
-    std::cout << "Current RSS         : " << usage_end.current_rss_kb << " KB\n";
-    std::cout << "Max RSS (ru_maxrss) : " << usage_end.max_rss_kb << " KB\n";
-    std::cout << "===========================\n";
-    if (!g_quiet)
-    {
-        std::cout << "Note: Extensive per-move printing will heavily reduce games/second.\n";
-    }
+    // Print game statistics
+    std::cout << std::format("Game statistics:\n");
+    std::cout << std::format("  Draws: {}\n", draws);
+    std::cout << std::format("  Black wins: {}\n", black);
+    std::cout << std::format("  White wins: {}\n", white);
+    std::cout << std::format("  Min moves: {}\n", min_moves);
+    std::cout << std::format("  Max moves: {}\n", max_moves);
+    std::cout << std::format("  Total games: {}\n", black + white + draws);
+    std::cout << std::format("  Throughput: {:.3f} games/s\n",
+                             static_cast<double>(black + white + draws) / (timeout.count() / 1000.0));
 
     return 0;
-}
- 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char **argv)
-{
-    return smoke_test(argc, argv);
 }
