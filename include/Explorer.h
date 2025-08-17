@@ -29,6 +29,25 @@
  * - Dames can move diagonally in any direction and capture opponent pieces by jumping over them
  */
 class Explorer {
+  public:
+    /**
+     * @brief Constructs an Explorer for the given board.
+     * @param board The board to analyze (stored as const reference).
+     */
+    explicit constexpr Explorer(const Board& board) noexcept : board(board) {}
+
+    // C++20: Explicitly defaulted special members for better clarity
+    ~Explorer() = default;
+    Explorer(const Explorer&) = default;
+    Explorer(Explorer&&) = default;
+
+    /**
+     * @brief Finds all valid moves for a piece at the given position.
+     * @param from The starting position of the piece.
+     * @return Legals containing either capture sequences or regular move positions.
+     */
+    [[nodiscard]] Legals find_valid_moves(const Position& from) const;
+
   private:
     const Board& board;
 
@@ -39,6 +58,21 @@ class Explorer {
         {.row = 1, .col = -1},  // SW
         {.row = 1, .col = 1}    // SE
     }};
+
+    // Bitmask-based key (up to 32 playable squares on 8x8 checkers board)
+    struct SequenceKey {
+        std::uint64_t captured_mask{}; // bit i set => position with index/hash i captured
+        Position final_pos{};          // landing square at end of sequence
+        [[nodiscard]] constexpr auto operator<=>(const SequenceKey&) const noexcept = default;
+        [[nodiscard]] constexpr bool operator==(const SequenceKey&) const noexcept = default;
+    };
+
+    // Custom hash for SequenceKey
+    struct SequenceKeyHash {
+        [[nodiscard]] constexpr std::size_t operator()(const SequenceKey& k) const noexcept {
+            return (k.captured_mask << 37) | k.final_pos.hash();
+        }
+    };
 
     /**
      * @brief Gets the valid directions for a piece based on its type and color.
@@ -69,46 +103,11 @@ class Explorer {
      * @param current_sequence Current capture sequence being built
      * @param all_sequences Output container for all found sequences
      */
-    // Bitmask-based key (up to 32 playable squares on 8x8 checkers board)
-    struct SequenceKey {
-        std::uint64_t captured_mask{}; // bit i set => position with index/hash i captured
-        Position final_pos{};          // landing square at end of sequence
-        [[nodiscard]] constexpr auto operator<=>(const SequenceKey&) const noexcept = default;
-        [[nodiscard]] constexpr bool operator==(const SequenceKey&) const noexcept = default;
-    };
-
-    // Custom hash for SequenceKey
-    struct SequenceKeyHash {
-        [[nodiscard]] constexpr std::size_t operator()(const SequenceKey& k) const noexcept {
-            return (k.captured_mask << 37) | k.final_pos.hash();
-        }
-    };
-
     void find_capture_sequences_recursive(
         Board board, // Copy by value for simulation
         const Position& current_pos, std::uint64_t captured_mask, CaptureSequence current_sequence,
         std::unordered_map<SequenceKey, CaptureSequence, SequenceKeyHash>& unique_sequences) const;
 
-  public:
-    /**
-     * @brief Constructs an Explorer for the given board.
-     * @param board The board to analyze (stored as const reference).
-     */
-    explicit constexpr Explorer(const Board& board) noexcept : board(board) {}
-
-    // C++20: Explicitly defaulted special members for better clarity
-    ~Explorer() = default;
-    Explorer(const Explorer&) = default;
-    Explorer(Explorer&&) = default;
-
-    /**
-     * @brief Finds all valid moves for a piece at the given position.
-     * @param from The starting position of the piece.
-     * @return Legals containing either capture sequences or regular move positions.
-     */
-    [[nodiscard]] Legals find_valid_moves(const Position& from) const;
-
-  private:
     /**
      * @brief Gets all possible non-capture moves for a piece at the given position.
      * @param from The position of the piece.
