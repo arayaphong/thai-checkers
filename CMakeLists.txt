@@ -12,6 +12,14 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Optional CPU/Link optimizations
+option(ENABLE_NATIVE_OPTIMIZATIONS "Enable -march/-mtune=native for Release builds" OFF)
+set(AMD_ZEN_ARCH "" CACHE STRING "Explicit AMD Zen micro-arch to target: znver2, znver3, znver4")
+option(ENABLE_LTO "Enable Link Time Optimization (IPO) in Release" OFF)
+
+# Optional: Enable OpenMP if available
+find_package(OpenMP QUIET)
+
 # Set build type if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
@@ -20,6 +28,20 @@ endif()
 # Compiler flags
 set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+
+# Link Time Optimization (IPO) (global project setting)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if(ENABLE_LTO)
+        include(CheckIPOSupported)
+        check_ipo_supported(RESULT ipo_supported OUTPUT ipo_error)
+        if(ipo_supported)
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+            message(STATUS "IPO/LTO enabled for Release builds")
+        else()
+            message(WARNING "IPO/LTO requested but not supported: ${ipo_error}")
+        endif()
+    endif()
+endif()
 
 # Setup coverage if enabled
 if(ENABLE_COVERAGE)
@@ -35,8 +57,9 @@ add_library(thai_checkers_lib STATIC
     src/Board.cpp
     src/Position.cpp
     src/Explorer.cpp
-    src/Options.cpp
+    src/Legals.cpp
     src/Game.cpp
+    src/Traversal.cpp
     # Add other source files here
 )
 
@@ -46,7 +69,39 @@ add_executable(thai_checkers_main
 )
 
 # Link the main executable with the library
-target_link_libraries(thai_checkers_main thai_checkers_lib)
+target_link_libraries(thai_checkers_main PRIVATE thai_checkers_lib)
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(thai_checkers_main PRIVATE OpenMP::OpenMP_CXX)
+    # Also apply OpenMP to the library, since it contains parallel code (Traversal.cpp)
+    target_link_libraries(thai_checkers_lib PRIVATE OpenMP::OpenMP_CXX)
+    message(STATUS "OpenMP found: enabling parallel build flags")
+else()
+    message(STATUS "OpenMP not found: building without OpenMP support")
+endif()
+
+# Apply arch-specific flags for project targets only (after targets are defined)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if(AMD_ZEN_ARCH)
+        target_compile_options(thai_checkers_lib PRIVATE
+            $<$<CONFIG:Release>:-march=${AMD_ZEN_ARCH}>
+            $<$<CONFIG:Release>:-mtune=${AMD_ZEN_ARCH}>
+        )
+        target_compile_options(thai_checkers_main PRIVATE
+            $<$<CONFIG:Release>:-march=${AMD_ZEN_ARCH}>
+            $<$<CONFIG:Release>:-mtune=${AMD_ZEN_ARCH}>
+        )
+    elseif(ENABLE_NATIVE_OPTIMIZATIONS)
+        target_compile_options(thai_checkers_lib PRIVATE
+            $<$<CONFIG:Release>:-march=native>
+            $<$<CONFIG:Release>:-mtune=native>
+        )
+        target_compile_options(thai_checkers_main PRIVATE
+            $<$<CONFIG:Release>:-march=native>
+            $<$<CONFIG:Release>:-mtune=native>
+        )
+    endif()
+endif()
 
 include(CTest)
 if(BUILD_TESTING)

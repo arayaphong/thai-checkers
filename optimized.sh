@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Thai Checkers 2 - Unified Optimized Script
-# Combines build + run + profiling into a single entrypoint
+# Thai Checkers 2 - Optimized Build & Run Script
 
 set -e
 
@@ -16,72 +15,129 @@ APP_NAME="thai_checkers_main"
 BUILD_DIR="build_optimized"
 BIN_PATH="$BUILD_DIR/$APP_NAME"
 ROOT_SYMLINK="thai_checkers_optimized"
-SCRIPT_NO_QUIET=false
-SCRIPT_PROFILER="auto" # auto|perf|callgrind|gprof
+
+# Build optimization options
+OPT_ARCH="auto"       # auto|native|znver2|znver3|znver4
+OPT_LTO="ON"          # ON|OFF
+OPT_AGGRESSIVE=false  # add extra optimization flags
+
+detect_cpu_arch() {
+  # Auto-detect CPU architecture for optimal tuning
+  local cpu_info
+  if [[ -f /proc/cpuinfo ]]; then
+    cpu_info=$(grep -m1 "model name" /proc/cpuinfo | cut -d: -f2 | xargs)
+
+    # Check for AMD Zen architectures
+    if echo "$cpu_info" | grep -qi "AMD"; then
+      local cpu_family cpu_model
+      cpu_family=$(grep -m1 "cpu family" /proc/cpuinfo | awk '{print $4}')
+      cpu_model=$(grep -m1 "model" /proc/cpuinfo | awk '{print $3}')
+
+      # AMD Zen architecture detection based on family/model
+      if [[ "$cpu_family" == "25" ]]; then
+        # Zen 3 (Ryzen 5000 series, EPYC 7003 series)
+        echo "znver3"
+      elif [[ "$cpu_family" == "23" ]]; then
+        if [[ "$cpu_model" -ge 96 ]]; then
+          # Zen 2 (Ryzen 3000/4000 series, EPYC 7002 series)
+          echo "znver2"
+        else
+          # Zen/Zen+ (Ryzen 1000/2000 series, EPYC 7001 series)
+          echo "znver1"
+        fi
+      elif [[ "$cpu_family" == "26" ]]; then
+        # Zen 4 (Ryzen 7000 series, EPYC 9004 series)
+        echo "znver4"
+      else
+        echo "native"
+      fi
+    else
+      # For Intel or other CPUs, use native optimization
+      echo "native"
+    fi
+  else
+    # Fallback if /proc/cpuinfo is not available
+    echo "native"
+  fi
+}
 
 print_usage() {
   cat <<EOF
 ${BLUE}Thai Checkers 2 - Optimized Controller${NC}
 Usage:
-  $0 --build [-- ARGS...]       Build the optimized binary (ignores ARGS)
-  $0 --run   [-- ARGS...]       Run the optimized binary with optional ARGS
-  $0 --profiling [-- ARGS...]   Run with CPU profiling (perf/valgrind/gprof)
+  $0 build [OPTIONS]        Build the optimized binary
+  $0 run [ARGS...]          Run the optimized binary with optional ARGS
 
-Options:
-  --profiler <perf|callgrind|gprof>   Force a specific profiler (default: auto)
-  --no-quiet                          Do not inject --quiet into app args during profiling
+Build Options:
+  --arch <auto|native|znver2|znver3|znver4>  CPU tuning target (default: auto)
+  --lto <on|off>                             Enable Link Time Optimization (default: on)
+  --aggressive                               Add extra optimization flags
 
 Examples:
-  $0 --run -- --quiet -s 10                 # run for 10s silently
-  $0 --profiling -- -s 10                   # profile quietly by default
-  $0 --profiling --profiler callgrind -- -s 10  # force Valgrind/Callgrind
-  $0 --profiling --no-quiet -- -s 10        # profile verbosely
+  $0 build                              # build with auto-detected CPU architecture
+  $0 build --arch native --aggressive   # build with native arch and extra opts
+  $0 run --timeout 30s                  # run with 30s timeout
+  $0 run --help                         # show executable help
 
 Notes:
-  - A symlink '${ROOT_SYMLINK}' is created to point at ${BIN_PATH} for convenience.
-  - Use "--" to separate script options from app arguments.
-  - Profiling defaults to quiet mode to reduce I/O overhead; pass --no-quiet to this script to disable.
+  - Auto-detection works for AMD Zen architectures (znver1/2/3/4), defaults to 'native' for others
+  - A symlink '${ROOT_SYMLINK}' is created for convenience
+  - All arguments after 'run' are passed directly to the executable
 EOF
 }
 
 ensure_symlink() {
-  # Create or refresh root-level convenience symlink
   if [[ -f "$BIN_PATH" ]]; then
     ln -sf "$BIN_PATH" "$ROOT_SYMLINK"
   fi
 }
 
 build_optimized() {
-  local for_profile=${1:-false}
-
   echo -e "${BLUE}Thai Checkers 2 - Optimized Build${NC}"
   echo "================================================"
   echo -e "${YELLOW}Cleaning previous optimized build...${NC}"
   rm -rf "$BUILD_DIR"
   mkdir -p "$BUILD_DIR"
 
-  echo -e "${YELLOW}Configuring CMake with ${for_profile:+profiling-friendly }optimization...${NC}"
+  echo -e "${YELLOW}Configuring CMake with optimization...${NC}"
 
-  # Common flags
-  local CXX_OPT_FLAGS="-O3 -DNDEBUG -march=native -mtune=native -flto -ffast-math -funroll-loops -finline-functions -DNDEBUG"
-  local LDFLAGS="-flto"
+  # Map script options to CMake cache args
+  local CMAKE_ARGS=(
+    -S .
+    -B "$BUILD_DIR"
+    -DCMAKE_BUILD_TYPE=Release
+  )
 
-  if [[ "$for_profile" == true ]]; then
-    # Better call stacks and symbols for profiler; avoid stripping
-    CXX_OPT_FLAGS+=" -g -fno-omit-frame-pointer"
-    # keep LDFLAGS as-is (no -s)
+  # LTO toggle
+  if [[ "${OPT_LTO^^}" == "ON" ]]; then
+    CMAKE_ARGS+=( -DENABLE_LTO=ON )
   else
-    # Match previous behavior: omit frame pointer and strip binary
-    CXX_OPT_FLAGS+=" -fomit-frame-pointer"
-    LDFLAGS+=" -s"
+    CMAKE_ARGS+=( -DENABLE_LTO=OFF )
   fi
 
-  cmake -S . \
-    -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CXX_FLAGS_RELEASE="$CXX_OPT_FLAGS" \
-    -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS" \
-    -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON
+  # Architecture selection
+  local actual_arch="$OPT_ARCH"
+  if [[ "$OPT_ARCH" == "auto" ]]; then
+    actual_arch=$(detect_cpu_arch)
+    echo -e "${BLUE}Auto-detected CPU architecture: ${actual_arch}${NC}"
+  fi
+
+  if [[ "$actual_arch" == "native" ]]; then
+    CMAKE_ARGS+=( -DENABLE_NATIVE_OPTIMIZATIONS=ON )
+  else
+    CMAKE_ARGS+=( -DAMD_ZEN_ARCH="$actual_arch" )
+  fi
+
+  # Compose release flags
+  local BASE_RELEASE_FLAGS="-O3 -DNDEBUG -fomit-frame-pointer"
+  local EXTRA_FLAGS=""
+  if [[ "$OPT_AGGRESSIVE" == true ]]; then
+    EXTRA_FLAGS+=" -ffast-math -funroll-loops -finline-functions"
+  fi
+  CMAKE_ARGS+=( -DCMAKE_CXX_FLAGS_RELEASE="$BASE_RELEASE_FLAGS $EXTRA_FLAGS" )
+  CMAKE_ARGS+=( -DCMAKE_EXE_LINKER_FLAGS="-s" )
+
+  cmake "${CMAKE_ARGS[@]}"
 
   echo -e "${YELLOW}Building optimized main application...${NC}"
   cmake --build "$BUILD_DIR" --config Release --target "$APP_NAME" -j"$(command -v nproc >/dev/null 2>&1 && nproc || echo 4)"
@@ -91,19 +147,16 @@ build_optimized() {
     echo -e "${BLUE}Executable location: $(realpath "$BIN_PATH")${NC}"
 
     echo -e "\n${BLUE}Optimization Details:${NC}"
-    echo "- March: native (optimized for current CPU)"
-    echo "- Mtune: native (tuned for current CPU)"
-    echo "- LTO: enabled (Link Time Optimization)"
-    echo "- Fast math: enabled"
-    echo "- Loop unrolling: enabled"
-    if [[ "$for_profile" == true ]]; then
-      echo "- Frame pointer: kept (profiling-friendly)"
-      echo "- Debug symbols: enabled"
-      echo "- Binary stripped: no"
+    if [[ "$OPT_ARCH" == "auto" ]]; then
+      echo "- Arch: $actual_arch (auto-detected from: $OPT_ARCH)"
     else
-      echo "- Inlining: aggressive"
-      echo "- Frame pointer: omitted"
-      echo "- Binary stripped: yes"
+      echo "- Arch: $actual_arch"
+    fi
+    echo "- LTO: ${OPT_LTO^^}"
+    if [[ "$OPT_AGGRESSIVE" == true ]]; then
+      echo "- Extras: -ffast-math -funroll-loops -finline-functions"
+    else
+      echo "- Extras: (none)"
     fi
 
     echo -e "\n${BLUE}Executable Info:${NC}"
@@ -125,185 +178,23 @@ run_optimized() {
       ensure_symlink
     else
       echo -e "${YELLOW}! Optimized executable not found. Building now...${NC}"
-      build_optimized false
+      build_optimized
     fi
   fi
 
   if [[ ! -f "$ROOT_SYMLINK" ]]; then
     echo -e "${RED}✗ Optimized executable not found!${NC}"
-    echo -e "${BLUE}Run $0 --build first to build the optimized version.${NC}"
+    echo -e "${BLUE}Run $0 build first to build the optimized version.${NC}"
     exit 1
   fi
 
   echo -e "${GREEN}Running Thai Checkers 2 (Optimized)...${NC}"
   echo "========================================"
+
   if command -v stdbuf >/dev/null 2>&1; then
     stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
   else
     "./$ROOT_SYMLINK" "${ARGS[@]}"
-  fi
-}
-
-profile_optimized() {
-  local -a ARGS=("$@")
-  # Default to quiet unless explicitly disabled at script level or already present in app args
-  local -a RUN_ARGS=()
-  if [[ "$SCRIPT_NO_QUIET" == true ]]; then
-    RUN_ARGS=("${ARGS[@]}")
-  else
-    local have_quiet=false
-    for a in "${ARGS[@]}"; do
-      if [[ "$a" == "--quiet" || "$a" == "-q" ]]; then have_quiet=true; break; fi
-    done
-    if [[ "$have_quiet" == true ]]; then
-      RUN_ARGS=("${ARGS[@]}")
-    else
-      RUN_ARGS=("${ARGS[@]}" "--quiet")
-    fi
-  fi
-  # Ensure a profiling-friendly build is present
-  echo -e "${YELLOW}Preparing profiling-friendly build...${NC}"
-  build_optimized true
-
-  echo -e "${BLUE}Profiling Thai Checkers 2...${NC}"
-
-  # If user forces Callgrind, honor it immediately.
-  if [[ "$SCRIPT_PROFILER" == "callgrind" ]]; then
-    if command -v valgrind >/dev/null 2>&1 && command -v callgrind_annotate >/dev/null 2>&1; then
-      echo -e "${YELLOW}Using Valgrind Callgrind (forced).${NC}"
-      local CG_OUT="$BUILD_DIR/callgrind.out"
-      valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
-      echo -e "${GREEN}✓ Callgrind run complete. Annotated summary (top ~60 lines)...${NC}"
-      callgrind_annotate "$CG_OUT" | head -n 60 || true
-      echo -e "${BLUE}Callgrind output at: $CG_OUT${NC}"
-      return
-    else
-      echo -e "${RED}Valgrind/Callgrind not available.${NC}"
-      echo -e "${BLUE}Install with: sudo apt install valgrind kcachegrind${NC}"
-      exit 2
-    fi
-  fi
-
-  # Prefer kernel-matched perf if available; else PATH perf. Fall back to Valgrind if unavailable.
-  local PERF_BIN=""
-  local PERF_KDIR_GENERIC="/usr/lib/linux-tools-$(uname -r)-generic"
-  local PERF_KDIR="/usr/lib/linux-tools-$(uname -r)"
-  local PERF_SCAN_DIR="/usr/lib/linux-tools"
-  if [[ -x "$PERF_KDIR_GENERIC/perf" ]]; then
-    PERF_BIN="$PERF_KDIR_GENERIC/perf"
-  elif [[ -x "$PERF_KDIR/perf" ]]; then
-    PERF_BIN="$PERF_KDIR/perf"
-  elif command -v perf >/dev/null 2>&1; then
-    PERF_BIN="$(command -v perf)"
-  fi
-
-  # If still not set or wrapper points to missing version, scan all linux-tools for any perf as a last resort
-  if [[ -z "$PERF_BIN" || "$PERF_BIN" == "/usr/bin/perf" ]]; then
-    if [[ -d "$PERF_SCAN_DIR" ]]; then
-      # Pick the newest available perf by versioned directory name
-      local ANY_PERF
-      ANY_PERF=$(find "$PERF_SCAN_DIR" -maxdepth 2 -type f -name perf 2>/dev/null | sort -V | tail -n 1 || true)
-      if [[ -n "$ANY_PERF" ]]; then
-        PERF_BIN="$ANY_PERF"
-      fi
-    fi
-  fi
-
-  if [[ -n "$PERF_BIN" && ( "$SCRIPT_PROFILER" == "auto" || "$SCRIPT_PROFILER" == "perf" ) ]]; then
-    echo -e "${YELLOW}Using 'perf' for profiling (record + report).${NC}"
-    echo -e "Resolved perf binary: ${BLUE}$PERF_BIN${NC}"
-    # Quick advisory if kernel settings block perf
-    local PERF_PARANOID
-    PERF_PARANOID=$(sysctl -n kernel.perf_event_paranoid 2>/dev/null || echo "")
-    if [[ -n "$PERF_PARANOID" && "$PERF_PARANOID" -gt 2 ]]; then
-      echo -e "${YELLOW}Note: kernel.perf_event_paranoid=$PERF_PARANOID may block perf for non-root.${NC}"
-      echo -e "Hint: try 'sudo sysctl kernel.perf_event_paranoid=1' and 'sudo sysctl kernel.kptr_restrict=0' if recording fails."
-    fi
-    local PERF_OUT="$BUILD_DIR/perf.data"
-    if "$PERF_BIN" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
-      echo -e "${GREEN}✓ perf record complete. Generating report (top ~60 lines)...${NC}"
-      "$PERF_BIN" report --stdio -i "$PERF_OUT" | head -n 60 || true
-      echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
-      return
-    else
-      echo -e "${RED}perf failed or is not compatible with the current kernel/tools.${NC}"
-      # If we used the wrapper, try a discovered versioned perf once as a second chance
-      if [[ "$PERF_BIN" == "/usr/bin/perf" && -d "$PERF_SCAN_DIR" ]]; then
-        local ALT_PERF
-        ALT_PERF=$(find "$PERF_SCAN_DIR" -maxdepth 2 -type f -name perf 2>/dev/null | sort -V | tail -n 1 || true)
-        if [[ -n "$ALT_PERF" && "$ALT_PERF" != "$PERF_BIN" ]]; then
-          echo -e "${YELLOW}Retrying with discovered perf binary: ${BLUE}$ALT_PERF${NC}"
-          if "$ALT_PERF" record -g --call-graph=dwarf -F 99 -o "$PERF_OUT" -- "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"; then
-            echo -e "${GREEN}✓ perf record complete (alt). Generating report (top ~60 lines)...${NC}"
-            "$ALT_PERF" report --stdio -i "$PERF_OUT" | head -n 60 || true
-            echo -e "${BLUE}Full perf data at: $PERF_OUT${NC}"
-            return
-          fi
-        fi
-      fi
-      echo -e "${YELLOW}Attempting fallback to Valgrind Callgrind...${NC}"
-    fi
-  fi
-
-  if [[ "$SCRIPT_PROFILER" != "gprof" ]] && command -v valgrind >/dev/null 2>&1 && command -v callgrind_annotate >/dev/null 2>&1; then
-    echo -e "${YELLOW}Using Valgrind Callgrind for profiling.${NC}"
-    local CG_OUT="$BUILD_DIR/callgrind.out"
-    valgrind --tool=callgrind --callgrind-out-file="$CG_OUT" "./$ROOT_SYMLINK" "${RUN_ARGS[@]}"
-    echo -e "${GREEN}✓ Callgrind run complete. Annotated summary (top ~60 lines)...${NC}"
-    callgrind_annotate "$CG_OUT" | head -n 60 || true
-    echo -e "${BLUE}Callgrind output at: $CG_OUT${NC}"
-  else
-    # Final fallback: gprof (-pg) if available
-    if command -v gprof >/dev/null 2>&1; then
-      echo -e "${YELLOW}Using gprof fallback (instrumented -pg build).${NC}"
-      local GPROF_BUILD_DIR="build_gprof"
-      local GPROF_BIN_PATH="$GPROF_BUILD_DIR/$APP_NAME"
-
-      echo -e "${YELLOW}Configuring CMake for gprof (-pg) in $GPROF_BUILD_DIR...${NC}"
-      rm -rf "$GPROF_BUILD_DIR"
-      mkdir -p "$GPROF_BUILD_DIR"
-      # Use moderate opts; disable IPO/LTO which can confuse gprof, keep symbols and frame pointers
-      cmake -S . \
-        -B "$GPROF_BUILD_DIR" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g -fno-omit-frame-pointer -pg" \
-        -DCMAKE_EXE_LINKER_FLAGS="-pg" \
-        -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF
-
-      echo -e "${YELLOW}Building gprof-instrumented binary...${NC}"
-      cmake --build "$GPROF_BUILD_DIR" --config Release --target "$APP_NAME" -j"$(command -v nproc >/dev/null 2>&1 && nproc || echo 4)"
-
-      if [[ -f "$GPROF_BIN_PATH" ]]; then
-        echo -e "${GREEN}✓ Build complete. Running to generate gmon.out...${NC}"
-        (
-          cd "$GPROF_BUILD_DIR" && \
-          stdbuf -oL -eL "./$APP_NAME" "${RUN_ARGS[@]}" || true
-        )
-        if [[ -f "$GPROF_BUILD_DIR/gmon.out" ]]; then
-          echo -e "${GREEN}✓ Profiling data generated. Printing gprof summary (top ~100 lines)...${NC}"
-          gprof "$GPROF_BIN_PATH" "$GPROF_BUILD_DIR/gmon.out" | head -n 100 || true
-          echo -e "${BLUE}Full gprof output available via:${NC}"
-          echo "  gprof $GPROF_BIN_PATH $GPROF_BUILD_DIR/gmon.out | less"
-        else
-          echo -e "${RED}✗ gmon.out not found after run. The program may require input or did not exit cleanly.${NC}"
-          echo -e "${BLUE}Try running manually, then run gprof:${NC}"
-          echo "  (cd $GPROF_BUILD_DIR && ./$APP_NAME [args])"
-          echo "  gprof $GPROF_BIN_PATH $GPROF_BUILD_DIR/gmon.out | less"
-          exit 2
-        fi
-      else
-        echo -e "${RED}✗ Failed to build gprof-instrumented binary.${NC}"
-        exit 2
-      fi
-    else
-      echo -e "${RED}✗ No supported profiling tools found or usable.${NC}"
-      echo -e "${BLUE}To enable profiling, install one of:${NC}"
-      echo "  - perf:     sudo apt install linux-tools-\$(uname -r) linux-cloud-tools-\$(uname -r)"
-      echo "  - valgrind: sudo apt install valgrind"
-      echo "  - gprof:    sudo apt install binutils"
-      echo -e "${BLUE}You can still run the optimized build with: $0 --run${NC}"
-      exit 2
-    fi
   fi
 }
 
@@ -318,54 +209,49 @@ fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --build)
+    build)
       ACTION="build"; shift ;;
-    --run)
-      ACTION="run"; shift ;;
-    --profiling|--profile)
-      ACTION="profiling"; shift ;;
-    --profiler)
-      SCRIPT_PROFILER="$2"; shift 2 ;;
-    --profiler=*)
-      SCRIPT_PROFILER="${1#*=}"; shift ;;
-    --callgrind)
-      SCRIPT_PROFILER="callgrind"; shift ;;
-    --perf)
-      SCRIPT_PROFILER="perf"; shift ;;
-    --gprof)
-      SCRIPT_PROFILER="gprof"; shift ;;
-    --no-quiet)
-      SCRIPT_NO_QUIET=true; shift ;;
-    -h|--help)
-      print_usage; exit 0 ;;
-    --)
-      shift
+    run)
+      ACTION="run"; shift
+      # All remaining arguments go to the app
       APP_ARGS+=("$@")
       break ;;
+    --arch)
+      OPT_ARCH="$2"; shift 2 ;;
+    --arch=*)
+      OPT_ARCH="${1#*=}"; shift ;;
+    --lto)
+      case "${2^^}" in
+        ON|OFF) OPT_LTO="${2^^}";;
+        on|off) OPT_LTO="${2^^}";;
+        *) echo -e "${RED}Invalid --lto value: $2 (use on|off)${NC}"; exit 1;;
+      esac
+      shift 2 ;;
+    --lto=*)
+      case "${1#*=}" in
+        on|ON) OPT_LTO=ON;;
+        off|OFF) OPT_LTO=OFF;;
+        *) echo -e "${RED}Invalid --lto value: ${1#*=} (use on|off)${NC}"; exit 1;;
+      esac
+      shift ;;
+    --aggressive)
+      OPT_AGGRESSIVE=true; shift ;;
+    -h|--help)
+      print_usage; exit 0 ;;
     *)
-      # Treat trailing tokens as app args once an action is chosen
-      if [[ -n "$ACTION" ]]; then
-        APP_ARGS+=("$1")
-        shift
-      else
-        echo -e "${RED}Unknown option: $1${NC}"
-        print_usage
-        exit 1
-      fi
-      ;;
+      echo -e "${RED}Unknown option: $1${NC}"
+      print_usage
+      exit 1 ;;
   esac
-
 done
 
 case "$ACTION" in
   build)
-    build_optimized false ;;
+    build_optimized ;;
   run)
     run_optimized "${APP_ARGS[@]}" ;;
-  profiling)
-    profile_optimized "${APP_ARGS[@]}" ;;
   *)
+    echo -e "${RED}No action specified${NC}"
     print_usage
     exit 1 ;;
-        
 esac
