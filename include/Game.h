@@ -26,9 +26,6 @@ struct Move {
 };
 
 class Game {
-    Board current_board;
-    // Use combined hash of board+player as key to track board+player combinations
-    std::unordered_map<std::size_t, int> position_count;
     std::vector<uint8_t> index_history;
     std::vector<Board> board_history; // Store complete board states for proper undo
 
@@ -42,24 +39,18 @@ class Game {
   private:
     std::unordered_map<Position, Legals> get_moveable_pieces() const;
     const std::vector<Move>& get_choices() const;
-    void push_history_state();
     void execute_move(const Move& move);
     bool seen(const Board& board) const noexcept;
-
-    // Helper to create combined hash of board position + current player
-    static std::size_t get_position_key(const Board& board, PieceColor player) noexcept;
-
+  
   public:
-    Game() noexcept : current_board(Board::setup()), choices_dirty_(true), choices_cache_{} {
-        board_history.push_back(current_board);   // Initialize with starting position
-        position_count[current_board.hash()] = 1; // Count the starting position
+    Game() noexcept : choices_dirty_(true), choices_cache_{} {
+        board_history.push_back(Board::setup());   // Initialize with starting position
     }
-    Game(Board b) noexcept : current_board(b), choices_dirty_(true), choices_cache_{} {
-        board_history.push_back(current_board);   // Initialize with given position
-        position_count[current_board.hash()] = 1; // Count the given position
+    Game(Board b) noexcept : choices_dirty_(true), choices_cache_{} {
+        board_history.push_back(b);   // Initialize with given position
     }
 
-    [[nodiscard]] std::size_t move_count() const { return is_looping_ ? 0 : get_choices().size(); }
+    [[nodiscard]] std::size_t move_count() const { return get_choices().size(); }
     void undo_move();
     void select_move(std::size_t index);
     void print_board() const noexcept;
@@ -68,6 +59,7 @@ class Game {
     // Accessors
     [[nodiscard]] const std::vector<uint8_t>& get_move_sequence() const noexcept { return index_history; }
     [[nodiscard]] bool is_looping() const noexcept { return is_looping_; }
-    [[nodiscard]] const Board& board() const noexcept { return current_board; }
+
+    [[nodiscard]] const Board& board() const noexcept { return board_history.back(); }
     [[nodiscard]] PieceColor player() const noexcept;
 };

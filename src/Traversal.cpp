@@ -31,11 +31,11 @@ void Traversal::traverse_impl(Game& game, std::size_t depth) { // NOLINT(misc-no
     }
 
     // Check for early termination conditions.
-    const std::size_t move_count = game.move_count();
-    if (move_count == 0) {
+    const auto& move_count = game.move_count();
+    const auto& is_looping = game.is_looping();
+    if (move_count == 0 || is_looping) {
         // Game is over - emit result
         ++game_count;
-        const auto is_looping = game.is_looping();
         const auto winner = game.player() == PieceColor::BLACK ? PieceColor::WHITE : PieceColor::BLACK;
     ResultEvent const result_event{
             .game_id = game_count,

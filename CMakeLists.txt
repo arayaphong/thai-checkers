@@ -134,6 +134,16 @@ if(BUILD_TESTING)
                 Catch2::Catch2WithMain
         )
         catch_discover_tests(explorer_tests)
+        
+        # Game tests
+        add_executable(game_tests
+            src/tests/GameTest.cpp)
+        target_link_libraries(game_tests
+            PRIVATE
+                thai_checkers_lib
+                Catch2::Catch2WithMain
+        )
+        catch_discover_tests(game_tests)
 endif()
 
 # Add coverage target if enabled
