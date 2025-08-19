@@ -48,8 +48,7 @@ auto board_to_string(const Board& board) -> std::string {
 }
 
 auto Game::get_choices() const -> const std::vector<Move>& {
-    if (!choices_dirty_) { return choices_cache_;
-}
+    if (!choices_dirty_) { return choices_cache_; }
 
     choices_cache_.clear();
 
@@ -102,28 +101,9 @@ auto Game::get_choices() const -> const std::vector<Move>& {
     return choices_cache_;
 }
 
-void Game::push_history_state() {
-    // Count the current board state with the current player
-    const auto key = get_position_key(current_board, player());
-    position_count[key]++;
-}
-
-auto Game::get_position_key(const Board& board, PieceColor player) noexcept -> std::size_t {
-    // Combine board hash with player using bit manipulation
-    // Use the board hash and set/clear the highest bit based on player color
-    std::size_t hash = board.hash();
-    constexpr std::size_t kPlayerBit = std::size_t(1) << (sizeof(std::size_t) * 8 - 1);
-    if (player == PieceColor::BLACK) {
-        hash |= kPlayerBit; // Set highest bit for BLACK
-    } else {
-        hash &= ~kPlayerBit; // Clear highest bit for WHITE
-    }
-    return hash;
-}
-
 auto Game::get_moveable_pieces() const -> std::unordered_map<Position, Legals> {
-    const auto explorer = Explorer(current_board);
-    const auto pieces = current_board.get_pieces(player());
+    const auto explorer = Explorer(board_history.back());
+    const auto pieces = board_history.back().get_pieces(player());
 
     std::unordered_map<Position, Legals> out;
     out.reserve(pieces.size());
@@ -140,7 +120,7 @@ void Game::execute_move(const Move& move) {
     const auto& captured = move.captured;
 
     // Execute the specified move
-    auto new_board = Board::copy(current_board);
+    auto new_board = Board::copy(board_history.back());
     new_board.move_piece(from_pos, to_pos);
 
     // Check if the piece is promoted to a dame
@@ -149,54 +129,38 @@ void Game::execute_move(const Move& move) {
     // Remove captured pieces
     for (const auto& pos : captured) { new_board.remove_piece(pos); }
 
-    // Update current player and board state
-    current_board = new_board;
-
     // Store the new board state in history
-    board_history.push_back(current_board);
-
-    // Push history state
-    push_history_state();
+    board_history.push_back(new_board);
 
     // Check for repeated board states
-    is_looping_ = seen(current_board);
+    is_looping_ = seen(board_history.back());
 
     // Mark cached choices dirty due to state change
     choices_dirty_ = true;
 }
 
 auto Game::seen(const Board& board) const noexcept -> bool {
-    const auto key = get_position_key(board, player());
-    const auto position_iterator = position_count.find(key);
-    // 3-fold repetition rule: position with same player becomes a draw if it occurs 3 times
-    constexpr int kRepetitionLimit = 3;
-    return position_iterator != position_count.end() && position_iterator->second >= kRepetitionLimit;
+    const std::size_t start_index = (player() == PieceColor::WHITE) ? 0 : 1;
+    for (std::size_t i = start_index; i < board_history.size() - 1; i += 2) {
+        if (board_history[i] == board) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void Game::undo_move() {
-    if (index_history.empty()) {
-        std::cerr << "No moves to undo.\n";
-        return;
-    }
-
     // Remove the current board state from history, but keep at least the initial state
     if (board_history.size() > 1) {
-        // Decrease the count for the current position with current player
-        const auto key = get_position_key(current_board, player());
-        auto position_iterator = position_count.find(key);
-        if (position_iterator != position_count.end()) {
-            position_iterator->second--;
-            if (position_iterator->second == 0) { position_count.erase(position_iterator); }
-        }
-
+        // Pop the last board state from history
         board_history.pop_back();
-        // Restore the previous board state
-        current_board = board_history.back();
 
         // Pop the last move index from history
         index_history.pop_back();
 
-        is_looping_ = false;   // Reset loop detection
+        // Check for repeated board states
+        is_looping_ = seen(board_history.back());
+
         choices_dirty_ = true; // Mark choices as dirty to recompute
     } else {
         std::cerr << "Cannot undo: already at initial state.\n";
@@ -212,17 +176,18 @@ void Game::select_move(std::size_t index) {
     execute_move(choices[index]);
 }
 
-void Game::print_board() const noexcept { std::cout << board_to_string(current_board); }
+void Game::print_board() const noexcept { std::cout << board_to_string(board_history.back()); }
 
 void Game::print_choices() const {
     const auto& choices = get_choices();
+    int index = 0;
     for (const auto& move_choice : choices) {
-        std::cout << "From: " << move_choice.from.to_string() << " To: " << move_choice.to.to_string();
+        std::cout << "[" << index++ << "] From: " << move_choice.from.to_string() << " To: " << move_choice.to.to_string();
         if (!move_choice.captured.empty()) {
             std::cout << " (Captures: ";
-            for (std::size_t i = 0; i < move_choice.captured.size(); ++i) {
-                std::cout << move_choice.captured[i].to_string();
-                if (i < move_choice.captured.size() - 1) {
+            for (std::size_t capture_index = 0; capture_index < move_choice.captured.size(); ++capture_index) {
+                std::cout << move_choice.captured[capture_index].to_string();
+                if (capture_index < move_choice.captured.size() - 1) {
                     std::cout << ", ";
                 }
             }
@@ -239,5 +204,4 @@ auto Game::player() const noexcept -> PieceColor {
     if (index_history.size() % 2 == 0) {
         return PieceColor::WHITE;
     }         return PieceColor::BLACK;
-   
 }

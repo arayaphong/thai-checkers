@@ -10,11 +10,11 @@ namespace { // anonymous namespace for test translation unit (satisfies misc-use
 
 TEST_CASE("Game plays to completion with first-move selector", "[selector][determinism]") {
     Game game;
-    while (game.move_count() != 0) { game.select_move(0); }
+    while (!game.is_looping()) { game.select_move(0); }
     const auto& move_sequence = game.get_move_sequence();
     const std::vector<uint8_t> expected = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+                                           0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     REQUIRE(move_sequence == expected);
 }
 
