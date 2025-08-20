@@ -141,9 +141,7 @@ class Legals {
      * @return Position at the given index.
      */
     [[nodiscard]] const Position& get_position(const std::size_t index) const {
-        if (moves_.empty()) [[unlikely]] {
-            throw std::out_of_range("Options::get_position: no moves available");
-        }
+        if (moves_.empty()) [[unlikely]] { throw std::out_of_range("Options::get_position: no moves available"); }
         if (index >= moves_.size()) [[unlikely]] {
             throw std::out_of_range("Options::get_position: index out of range");
         }
@@ -159,9 +157,7 @@ class Legals {
         if (!has_captures_) [[unlikely]] {
             throw std::invalid_argument("Options::get_capture_pieces: not a capture variant");
         }
-        if (moves_.empty()) [[unlikely]] {
-            throw std::out_of_range("Options::get_capture_pieces: no moves available");
-        }
+        if (moves_.empty()) [[unlikely]] { throw std::out_of_range("Options::get_capture_pieces: no moves available"); }
         if (index >= moves_.size()) [[unlikely]] {
             throw std::out_of_range("Options::get_capture_pieces: index out of range");
         }
@@ -174,9 +170,7 @@ class Legals {
      * @return MoveInfo containing target position and captured pieces.
      */
     [[nodiscard]] const MoveInfo& get_move_info(const std::size_t index) const {
-        if (moves_.empty()) [[unlikely]] {
-            throw std::out_of_range("Options::get_move_info: no moves available");
-        }
+        if (moves_.empty()) [[unlikely]] { throw std::out_of_range("Options::get_move_info: no moves available"); }
         if (index >= moves_.size()) [[unlikely]] {
             throw std::out_of_range("Options::get_move_info: index out of range");
         }

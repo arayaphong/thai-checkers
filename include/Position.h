@@ -105,18 +105,16 @@ class Position {
     explicit constexpr Position(std::uint8_t index) noexcept : index_{index} {}
 
     // C++20 requires clause for constructor validation
-    template<Coordinate CoordType>
+    template <Coordinate CoordType>
     constexpr Position(CoordType x, CoordType y)
         requires(std::convertible_to<CoordType, int>)
         : index_{[&]() -> std::uint8_t {
-            const int xi = static_cast<int>(x);
-            const int yi = static_cast<int>(y);
-            if (!is_valid(xi, yi)) [[unlikely]] {
-                throw std::invalid_argument("Invalid coordinates for Position");
-            }
-            return coords_to_index(xi, yi);
-        }()} {}
-    
+              const int xi = static_cast<int>(x);
+              const int yi = static_cast<int>(y);
+              if (!is_valid(xi, yi)) [[unlikely]] { throw std::invalid_argument("Invalid coordinates for Position"); }
+              return coords_to_index(xi, yi);
+          }()} {}
+
     // C++20 string-like constructor with concepts (non-throwing in hard-removal build)
     template <PositionStringLike StringType>
     constexpr Position(const StringType& pos_str)

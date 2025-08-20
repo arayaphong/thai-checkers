@@ -54,17 +54,11 @@ auto Board::from_hash(std::size_t hash) -> Board {
     int count = 0;
     for (int i = 0; i < BoardConstants::kBoardSquares && count < BoardConstants::kMaxPiecesPerSide; ++i) {
         const auto mask = static_cast<std::uint32_t>(1U) << i;
-        if ((board.occ_bits_ & mask) == 0U) {
-            continue;
-        }
+        if ((board.occ_bits_ & mask) == 0U) { continue; }
 
         // Dame info is in bits[count], black info is in bits[count + 16]
-        if (bits[count]) {
-            board.dame_bits_ |= mask;
-        }
-        if (bits[count + BoardConstants::kMaxPiecesPerSide]) {
-            board.black_bits_ |= mask;
-        }
+        if (bits[count]) { board.dame_bits_ |= mask; }
+        if (bits[count + BoardConstants::kMaxPiecesPerSide]) { board.black_bits_ |= mask; }
         ++count;
     }
 
@@ -82,9 +76,7 @@ auto Board::hash() const noexcept -> std::size_t {
     int count = 0;
     for (int i = 0; i < BoardConstants::kBoardSquares && count < BoardConstants::kMaxPiecesPerSide; ++i) {
         const auto mask = static_cast<std::uint32_t>(1U) << i;
-        if ((occ_bits_ & mask) == 0U) {
-            continue;
-        }
+        if ((occ_bits_ & mask) == 0U) { continue; }
         bits[count] = ((dame_bits_ & mask) != 0U);
         bits[count + BoardConstants::kMaxPiecesPerSide] = ((black_bits_ & mask) != 0U);
         ++count;
@@ -93,9 +85,7 @@ auto Board::hash() const noexcept -> std::size_t {
 }
 
 auto Board::is_occupied(const Position& pos) const noexcept -> bool {
-    if (!is_valid_position(pos)) {
-        return false;
-    }
+    if (!is_valid_position(pos)) { return false; }
     const auto idx = static_cast<unsigned>(pos.hash());
     return (occ_bits_ & (static_cast<std::uint32_t>(1U) << idx)) != 0U;
 }
@@ -113,14 +103,10 @@ auto Board::is_dame_piece(const Position& pos) const noexcept -> bool {
 }
 
 void Board::promote_piece(const Position& pos) noexcept {
-    if (!is_valid_position(pos)) {
-        return;
-    }
+    if (!is_valid_position(pos)) { return; }
     const auto idx = static_cast<unsigned>(pos.hash());
     const auto mask = static_cast<std::uint32_t>(1U) << idx;
-    if ((occ_bits_ & mask) == 0U) {
-        return;
-    }
+    if ((occ_bits_ & mask) == 0U) { return; }
     dame_bits_ |= mask;
 }
 
@@ -130,12 +116,8 @@ void Board::move_piece(const Position& from_pos, const Position& to_pos) noexcep
     const auto from_mask = static_cast<std::uint32_t>(1U) << from_idx;
     const auto to_mask = static_cast<std::uint32_t>(1U) << to_idx;
     // Only move if from occupied and to empty
-    if ((occ_bits_ & from_mask) == 0U) {
-        return;
-    }
-    if ((occ_bits_ & to_mask) != 0U) {
-        return;
-    }
+    if ((occ_bits_ & from_mask) == 0U) { return; }
+    if ((occ_bits_ & to_mask) != 0U) { return; }
     const bool was_black = (black_bits_ & from_mask) != 0U;
     const bool was_dame = (dame_bits_ & from_mask) != 0U;
     // Clear from
@@ -157,9 +139,7 @@ void Board::move_piece(const Position& from_pos, const Position& to_pos) noexcep
 }
 
 void Board::remove_piece(const Position& pos) noexcept {
-    if (!is_valid_position(pos)) {
-        return;
-    }
+    if (!is_valid_position(pos)) { return; }
     const auto idx = static_cast<unsigned>(pos.hash());
     const auto mask = static_cast<std::uint32_t>(1U) << idx;
     occ_bits_ &= ~mask;
@@ -172,14 +152,10 @@ auto Board::get_pieces(PieceColor color) const -> Pieces {
     out.reserve(BoardConstants::kPiecesReserveSize);
     for (int i = 0; i < BoardConstants::kBoardSquares; ++i) {
         const auto mask = static_cast<std::uint32_t>(1U) << i;
-        if ((occ_bits_ & mask) == 0U) {
-            continue;
-        }
+        if ((occ_bits_ & mask) == 0U) { continue; }
         const bool is_black = (black_bits_ & mask) != 0U;
         const bool is_dame = (dame_bits_ & mask) != 0U;
-        if ((color == PieceColor::BLACK) != is_black) {
-            continue;
-        }
+        if ((color == PieceColor::BLACK) != is_black) { continue; }
         const auto pos = Position::from_index(i);
         out.emplace(pos, PieceInfo{.color = is_black ? PieceColor::BLACK : PieceColor::WHITE,
                                    .type = is_dame ? PieceType::DAME : PieceType::PION});

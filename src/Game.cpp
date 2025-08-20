@@ -28,15 +28,12 @@ auto board_to_string(const Board& board) -> std::string {
                 const bool is_light_square = (row_index + col_index) % 2 == 0;
 
                 const std::string symbol = [&]() -> std::string {
-                    if (is_light_square) {
-                        return ".";
-                    }                         // Only create Position for valid black squares
-                        const auto pos = Position{col_index, row_index};
-                        if (board.is_occupied(pos)) {
-                            return piece_symbol(board.is_black_piece(pos), board.is_dame_piece(pos));
-                        }                             return " ";
-                       
-                   
+                    if (is_light_square) { return "."; } // Only create Position for valid black squares
+                    const auto pos = Position{col_index, row_index};
+                    if (board.is_occupied(pos)) {
+                        return piece_symbol(board.is_black_piece(pos), board.is_dame_piece(pos));
+                    }
+                    return " ";
                 }();
 
                 str += std::format("{} ", symbol);
@@ -57,8 +54,7 @@ auto Game::get_choices() const -> const std::vector<Move>& {
     // Gather and sort positions for deterministic iteration order
     std::vector<Position> from_positions;
     from_positions.reserve(moveable_pieces.size());
-    for (const auto& piece_pair : moveable_pieces) { from_positions.push_back(piece_pair.first);
-}
+    for (const auto& piece_pair : moveable_pieces) { from_positions.push_back(piece_pair.first); }
     std::sort(from_positions.begin(), from_positions.end(),
               [](const Position& pos_a, const Position& pos_b) { return pos_a.hash() < pos_b.hash(); });
 
@@ -79,11 +75,12 @@ auto Game::get_choices() const -> const std::vector<Move>& {
         }
         // Sort: captures first handled later, but ensure deterministic order by (to, captured...)
         std::sort(tmp.begin(), tmp.end(), [](const TmpMove& move_a, const TmpMove& move_b) {
-            if (move_a.to.hash() != move_b.to.hash()) { return move_a.to.hash() < move_b.to.hash();
-}
+            if (move_a.to.hash() != move_b.to.hash()) { return move_a.to.hash() < move_b.to.hash(); }
             return move_a.captured < move_b.captured; // lexicographic on positions
         });
-        for (auto& move_item : tmp) { choices_cache_.push_back(Move{from, move_item.to, std::move(move_item.captured)}); }
+        for (auto& move_item : tmp) {
+            choices_cache_.push_back(Move{from, move_item.to, std::move(move_item.captured)});
+        }
     }
 
     if (any_capture) {
@@ -91,9 +88,8 @@ auto Game::get_choices() const -> const std::vector<Move>& {
         std::vector<Move> capture_only;
         capture_only.reserve(choices_cache_.size());
         for (auto& move_item : choices_cache_) {
-            if (move_item.is_capture()) { capture_only.push_back(std::move(move_item));
-}
-}
+            if (move_item.is_capture()) { capture_only.push_back(std::move(move_item)); }
+        }
         choices_cache_.swap(capture_only);
     }
 
@@ -142,16 +138,14 @@ void Game::execute_move(const Move& move) {
 auto Game::seen(const Board& board) const noexcept -> bool {
     const std::size_t start_index = (player() == PieceColor::WHITE) ? 0 : 1;
     for (std::size_t i = start_index; i < board_history.size() - 1; i += 2) {
-        if (board_history[i] == board) {
-            return true;
-        }
+        if (board_history[i] == board) { return true; }
     }
     return false;
 }
 
 void Game::undo_move() {
     // Remove the current board state from history, but keep at least the initial state
-    if (board_history.size() > 1) {
+    if (board_history.size() > 1) [[likely]] {
         // Pop the last board state from history
         board_history.pop_back();
 
@@ -162,7 +156,7 @@ void Game::undo_move() {
         is_looping_ = seen(board_history.back());
 
         choices_dirty_ = true; // Mark choices as dirty to recompute
-    } else {
+    } else [[unlikely]] {
         std::cerr << "Cannot undo: already at initial state.\n";
     }
 }
@@ -182,14 +176,13 @@ void Game::print_choices() const {
     const auto& choices = get_choices();
     int index = 0;
     for (const auto& move_choice : choices) {
-        std::cout << "[" << index++ << "] From: " << move_choice.from.to_string() << " To: " << move_choice.to.to_string();
+        std::cout << "[" << index++ << "] From: " << move_choice.from.to_string()
+                  << " To: " << move_choice.to.to_string();
         if (!move_choice.captured.empty()) {
             std::cout << " (Captures: ";
             for (std::size_t capture_index = 0; capture_index < move_choice.captured.size(); ++capture_index) {
                 std::cout << move_choice.captured[capture_index].to_string();
-                if (capture_index < move_choice.captured.size() - 1) {
-                    std::cout << ", ";
-                }
+                if (capture_index < move_choice.captured.size() - 1) { std::cout << ", "; }
             }
             std::cout << ")";
         }
@@ -201,7 +194,6 @@ auto Game::player() const noexcept -> PieceColor {
     // Player alternates based on number of moves made
     // Even number of moves (0, 2, 4, ...) = White's turn
     // Odd number of moves (1, 3, 5, ...) = Black's turn
-    if (index_history.size() % 2 == 0) {
-        return PieceColor::WHITE;
-    }         return PieceColor::BLACK;
+    if (index_history.size() % 2 == 0) { return PieceColor::WHITE; }
+    return PieceColor::BLACK;
 }

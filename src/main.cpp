@@ -19,9 +19,7 @@ constexpr long long k_default_timeout_ms = 10000;
 } // namespace
 
 auto parse_timeout(std::string_view arg) -> std::optional<std::chrono::milliseconds> {
-    if (arg.empty()) {
-        return std::nullopt;
-    }
+    if (arg.empty()) { return std::nullopt; }
 
     try {
         // Check for 'ms' suffix (milliseconds) FIRST - before checking 's'
@@ -41,9 +39,7 @@ auto parse_timeout(std::string_view arg) -> std::optional<std::chrono::milliseco
         // Default to seconds if no suffix
         const double seconds = std::stod(std::string(arg));
         return std::chrono::milliseconds(static_cast<long long>(seconds * k_milliseconds_per_second));
-    } catch (const std::exception&) {
-        return std::nullopt;
-    }
+    } catch (const std::exception&) { return std::nullopt; }
 }
 
 void print_usage(const char* program_name) {
@@ -65,7 +61,8 @@ auto main(int argc, const char* const* argv) -> int {
         if (arg == "--help" || arg == "-h") {
             print_usage(argv[0]);
             return 0;
-        } if (arg == "--timeout") {
+        }
+        if (arg == "--timeout") {
             if (i + 1 >= argc) {
                 std::cerr << "Error: --timeout requires a duration argument\n";
                 print_usage(argv[0]);
@@ -123,8 +120,9 @@ auto main(int argc, const char* const* argv) -> int {
     std::cout << std::format("  Min moves: {}\n", min_moves);
     std::cout << std::format("  Max moves: {}\n", max_moves);
     std::cout << std::format("  Total games: {}\n", black + white + loops);
-    std::cout << std::format("  Throughput: {:.3f} games/s\n",
-                             static_cast<double>(black + white + loops) / (static_cast<double>(timeout.count()) / static_cast<double>(k_milliseconds_per_second)));
+    std::cout << std::format("  Throughput: {:.3f} games/s\n", static_cast<double>(black + white + loops) /
+                                                                   (static_cast<double>(timeout.count()) /
+                                                                    static_cast<double>(k_milliseconds_per_second)));
 
     return 0;
 }

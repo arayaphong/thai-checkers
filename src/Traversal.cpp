@@ -37,14 +37,14 @@ void Traversal::traverse_impl(Game& game, std::size_t depth) { // NOLINT(misc-no
         // Game is over - emit result
         ++game_count;
         const auto winner = game.player() == PieceColor::BLACK ? PieceColor::WHITE : PieceColor::BLACK;
-    ResultEvent const result_event{
+        ResultEvent const result_event{
             .game_id = game_count,
             .looping = is_looping,
             .winner = is_looping ? std::nullopt : std::make_optional(winner),
             .history = game.get_move_sequence(),
         };
         // Invoke result callback
-    if (result_cb_) { result_cb_(result_event); }
+        if (result_cb_) { result_cb_(result_event); }
 
         // Emit progress every 2 seconds
         emit_progress_if_needed();

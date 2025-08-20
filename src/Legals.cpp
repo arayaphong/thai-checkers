@@ -11,8 +11,7 @@ constexpr std::string_view CAPTURE_TYPE = "CaptureSequence";
 
 namespace Legals_impl {
 [[nodiscard]] constexpr auto validate_move_info(const MoveInfo& move_info) noexcept -> bool {
-    if (!move_info.target_position.is_valid()) { return false;
-}
+    if (!move_info.target_position.is_valid()) { return false; }
     return std::ranges::all_of(move_info.captured_positions, [](const Position& pos) { return pos.is_valid(); });
 }
 

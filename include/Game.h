@@ -41,13 +41,13 @@ class Game {
     const std::vector<Move>& get_choices() const;
     void execute_move(const Move& move);
     bool seen(const Board& board) const noexcept;
-  
+
   public:
     Game() noexcept : choices_dirty_(true), choices_cache_{} {
-        board_history.push_back(Board::setup());   // Initialize with starting position
+        board_history.push_back(Board::setup()); // Initialize with starting position
     }
     Game(Board b) noexcept : choices_dirty_(true), choices_cache_{} {
-        board_history.push_back(b);   // Initialize with given position
+        board_history.push_back(b); // Initialize with given position
     }
 
     [[nodiscard]] std::size_t move_count() const { return get_choices().size(); }
