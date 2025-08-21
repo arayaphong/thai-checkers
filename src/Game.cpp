@@ -136,17 +136,19 @@ void Game::execute_move(const Move& move) {
 }
 
 auto Game::seen(const Board& board) const noexcept -> bool {
-    // Early exit if we have less than 3 moves (minimum for a repetition)
-    if (board_history.size() < 3) [[unlikely]] { return false; }
+    // Minimum history length required to compare for a repetition
+    constexpr std::size_t kMinHistoryForRepetition = 3;
+    if (board_history.size() < kMinHistoryForRepetition) { return false; }
 
     const std::size_t start_index = (player() == PieceColor::WHITE) ? 0 : 1;
 
-    // Search backwards for better cache locality and early termination
-    // Stop before the last element (which is the current board)
-    for (std::size_t i = board_history.size() - 3; i >= start_index; i -= 2) {
-        if (board_history[i] == board) [[likely]] { return true; }
-        if (i < 2) [[unlikely]]
-            break; // Prevent underflow when i becomes 0 or 1
+    // Search backwards for better cache locality and early termination.
+    // Use a signed index to avoid unsigned underflow when decrementing by 2.
+    const auto start = static_cast<std::ptrdiff_t>(start_index);
+    for (std::ptrdiff_t i =
+             static_cast<std::ptrdiff_t>(board_history.size()) - static_cast<std::ptrdiff_t>(kMinHistoryForRepetition);
+         i >= start; i -= 2) {
+        if (board_history[static_cast<std::size_t>(i)] == board) { return true; }
     }
     return false;
 }
