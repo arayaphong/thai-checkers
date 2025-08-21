@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <optional>
+#include <fstream>
 
 namespace {
 constexpr long long k_milliseconds_per_second = 1000;
@@ -50,6 +51,29 @@ void print_usage(const char* program_name) {
     std::cout << "  --help             Show this help message\n";
 }
 
+// Save checkpoint as a compact JSON object to a file. Returns true on success.
+static bool save_checkpoint_json_to_file(const std::vector<Traversal::CheckpointEntry>& cp,
+                                         const std::string& filename) {
+    std::ofstream ofs(filename, std::ios::trunc);
+    if (!ofs) return false;
+
+    ofs << '{';
+    ofs << "\"checkpoint\":";
+    ofs << '[';
+    for (std::size_t i = 0; i < cp.size(); ++i) {
+        const auto& e = cp[i];
+        ofs << '{';
+        ofs << "\"progress\":" << e.progress_index << ',';
+        ofs << "\"maximum\":" << e.maximum_index;
+        ofs << '}';
+        if (i + 1 < cp.size()) ofs << ',';
+    }
+    ofs << ']';
+    ofs << '}';
+    ofs << '\n';
+    return true;
+}
+
 auto main(int argc, const char* const* argv) -> int {
     // Default timeout: 10 seconds
     std::chrono::milliseconds timeout{k_default_timeout_ms};
@@ -86,12 +110,14 @@ auto main(int argc, const char* const* argv) -> int {
 
     std::cout << std::format("Running Thai Checkers analysis with timeout: {}ms\n", timeout.count());
 
+    // Game statistics counters
     uint64_t loops = 0;
     uint64_t black = 0;
     uint64_t white = 0;
     uint64_t min_moves = std::numeric_limits<uint64_t>::max();
     uint64_t max_moves = 0;
 
+    // Subscribe to result events: update statistics and capture checkpoint.
     Traversal traversal(
         [&](const Traversal::ResultEvent& result_event) {
             const auto moves = static_cast<uint64_t>(result_event.history.size());
@@ -111,6 +137,16 @@ auto main(int argc, const char* const* argv) -> int {
 
     Game game;
     traversal.traverse_for(game, timeout);
+
+    // Save checkpoint as JSON before exit
+    const std::string cp_file = "checkpoint.json";
+    const auto checkpoint = traversal.get_checkpoint();
+
+    if (save_checkpoint_json_to_file(checkpoint, cp_file)) {
+        std::cout << std::format("Checkpoint saved: {} depth to {}\n", checkpoint.size(), cp_file);
+    } else {
+        std::cerr << std::format("Error: failed to save checkpoint to {}\n", cp_file);
+    }
 
     // Print game statistics
     std::cout << std::format("Game statistics:\n");

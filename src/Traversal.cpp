@@ -53,17 +53,41 @@ void Traversal::traverse_impl(Game& game, std::size_t depth) { // NOLINT(misc-no
         return;
     }
 
-    for (std::size_t i = 0; i < move_count; ++i) {
-        game.select_move(i);
+    // Record a checkpoint entry for this decision depth (progress index, maximum choices)
+    checkpoint_.push_back(CheckpointEntry{0u, static_cast<std::size_t>(move_count)});
+    // Snapshot the non-empty checkpoint stack so we can expose a final
+    // meaningful checkpoint even if traversal empties the stack later.
+    last_checkpoint_snapshot_ = checkpoint_;
+
+    // Iterate choices using the checkpoint's progress_index so the current path is visible
+    while (checkpoint_.back().progress_index < checkpoint_.back().maximum_index) {
+        const std::size_t idx = checkpoint_.back().progress_index;
+        game.select_move(idx);
         traverse_impl(game, depth + 1); // Pass incremented depth
         game.undo_move();               // Backtrack after exploring this branch
+
+        // Advance the recorded progress for this depth
+        ++checkpoint_.back().progress_index;
+        // If deadline reached during recursion, stop exploring further siblings
+        if (deadline_ && std::chrono::steady_clock::now() >= *deadline_) {
+            checkpoint_.pop_back();
+            return;
+        }
     }
+
+    // Leaving this decision point - remove the checkpoint entry
+    checkpoint_.pop_back();
+    // Update snapshot if there are still entries, otherwise keep the last known good state
+    if (!checkpoint_.empty()) { last_checkpoint_snapshot_ = checkpoint_; }
 }
 
 void Traversal::traverse_for(Game& game, std::optional<std::chrono::milliseconds> timeout) {
     // Initialize
     game_count = 0;
     last_progress_time_ = std::chrono::steady_clock::now();
+
+    // Clear any previous checkpoint state before starting
+    checkpoint_.clear();
 
     // Set deadline if timeout is provided
     if (timeout) {
@@ -73,4 +97,14 @@ void Traversal::traverse_for(Game& game, std::optional<std::chrono::milliseconds
     }
 
     traverse_impl(game);
+
+    // If traversal finished and we didn't leave a checkpoint on the stack,
+    // but we captured a last non-empty snapshot earlier, restore it so
+    // external callers can inspect a meaningful final checkpoint.
+    if (checkpoint_.empty() && !last_checkpoint_snapshot_.empty()) { checkpoint_ = last_checkpoint_snapshot_; }
+    // If we still have no checkpoint, provide a placeholder so callers see
+    // a deterministic final state instead of an empty vector.
+    if (checkpoint_.empty() && last_checkpoint_snapshot_.empty()) { checkpoint_.push_back(CheckpointEntry{0u, 0u}); }
+
+    // traversal end
 }

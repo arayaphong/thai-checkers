@@ -10,6 +10,19 @@
 
 class Traversal {
   public:
+    // Checkpoint entry exposed publicly so callers can inspect the traversal state.
+    struct CheckpointEntry {
+        std::size_t progress_index;
+        std::size_t maximum_index;
+    };
+
+    // Return a copy of the current checkpoint stack (depth-ordered, root -> current).
+    // If the live checkpoint is empty, return the last non-empty snapshot so
+    // callers always receive a meaningful final checkpoint.
+    std::vector<CheckpointEntry> get_checkpoint() const {
+        return !checkpoint_.empty() ? checkpoint_ : last_checkpoint_snapshot_;
+    }
+
     void traverse_for(Game& game, std::optional<std::chrono::milliseconds> timeout = std::nullopt);
     struct ResultEvent {
         std::size_t game_id;              // total games completed so far
@@ -33,7 +46,16 @@ class Traversal {
     std::optional<std::chrono::steady_clock::time_point> deadline_;
 
     // Last time progress was emitted
-    std::chrono::steady_clock::time_point last_progress_time_;
+    std::chrono::steady_clock::time_point last_progress_time_{std::chrono::steady_clock::now()};
+
+    // Depth-ordered checkpoint snapshot (root -> current). Traversal code should
+    // push/pop or update entries as it descends/backtracks. This is intentionally
+    // a lightweight structure (no full history) for resuming/inspecting current path.
+    std::vector<CheckpointEntry> checkpoint_;
+
+    // Last non-empty checkpoint observed during traversal. Used to restore a
+    // meaningful checkpoint when the traversal unwinds completely.
+    std::vector<CheckpointEntry> last_checkpoint_snapshot_;
 
     // Depth-aware traversal to limit task creation overhead
     void traverse_impl(Game& game, std::size_t depth = 0);
