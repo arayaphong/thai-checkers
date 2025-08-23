@@ -16,12 +16,8 @@ class Traversal {
         std::size_t maximum_index;
     };
 
-    // Return a copy of the current checkpoint stack (depth-ordered, root -> current).
-    // If the live checkpoint is empty, return the last non-empty snapshot so
-    // callers always receive a meaningful final checkpoint.
-    std::vector<CheckpointEntry> get_checkpoint() const {
-        return !checkpoint_.empty() ? checkpoint_ : last_checkpoint_snapshot_;
-    }
+    // Return the current checkpoint stack (depth-ordered, root -> current).
+    std::vector<CheckpointEntry> get_checkpoint() const { return checkpoint_; }
 
     void traverse_for(Game& game, std::optional<std::chrono::milliseconds> timeout = std::nullopt);
     struct ResultEvent {
@@ -53,12 +49,8 @@ class Traversal {
     // a lightweight structure (no full history) for resuming/inspecting current path.
     std::vector<CheckpointEntry> checkpoint_;
 
-    // Last non-empty checkpoint observed during traversal. Used to restore a
-    // meaningful checkpoint when the traversal unwinds completely.
-    std::vector<CheckpointEntry> last_checkpoint_snapshot_;
-
-    // Depth-aware traversal to limit task creation overhead
-    void traverse_impl(Game& game, std::size_t depth = 0);
+    // Iterative traversal using explicit stack
+    void traverse_impl(Game& game);
 
     // Helper to emit progress every 2 seconds
     void emit_progress_if_needed();

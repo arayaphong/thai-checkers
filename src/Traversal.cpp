@@ -24,17 +24,13 @@ void Traversal::emit_progress_if_needed() {
     }
 }
 
-void Traversal::traverse_impl(Game& game, std::size_t depth) { // NOLINT(misc-no-recursion) recursive by design
-    // Check timeout first
-    if (deadline_ && std::chrono::steady_clock::now() >= *deadline_) {
-        return; // Time's up, stop traversal
-    }
+void Traversal::traverse_impl(Game& game) { // Iterative traversal using explicit stack
+    // Initialize with the root state
+    const auto move_count = game.move_count();
+    const auto is_looping = game.is_looping();
 
-    // Check for early termination conditions.
-    const auto& move_count = game.move_count();
-    const auto& is_looping = game.is_looping();
+    // Handle immediate termination (no moves or looping at start)
     if (move_count == 0 || is_looping) {
-        // Game is over - emit result
         ++game_count;
         const auto winner = game.player() == PieceColor::BLACK ? PieceColor::WHITE : PieceColor::BLACK;
         ResultEvent const result_event{
@@ -43,42 +39,64 @@ void Traversal::traverse_impl(Game& game, std::size_t depth) { // NOLINT(misc-no
             .winner = is_looping ? std::nullopt : std::make_optional(winner),
             .history = game.get_move_sequence(),
         };
-        // Invoke result callback
         if (result_cb_) { result_cb_(result_event); }
-
-        // Emit progress every 2 seconds
         emit_progress_if_needed();
-
-        // No need to undo here - backtracking will handle it
         return;
     }
 
-    // Record a checkpoint entry for this decision depth (progress index, maximum choices)
+    // Start with initial checkpoint
     checkpoint_.push_back(CheckpointEntry{0u, static_cast<std::size_t>(move_count)});
-    // Snapshot the non-empty checkpoint stack so we can expose a final
-    // meaningful checkpoint even if traversal empties the stack later.
-    last_checkpoint_snapshot_ = checkpoint_;
 
-    // Iterate choices using the checkpoint's progress_index so the current path is visible
-    while (checkpoint_.back().progress_index < checkpoint_.back().maximum_index) {
-        const std::size_t idx = checkpoint_.back().progress_index;
-        game.select_move(idx);
-        traverse_impl(game, depth + 1); // Pass incremented depth
-        game.undo_move();               // Backtrack after exploring this branch
-
-        // Advance the recorded progress for this depth
-        ++checkpoint_.back().progress_index;
-        // If deadline reached during recursion, stop exploring further siblings
+    // Main iterative loop - process the checkpoint stack
+    while (!checkpoint_.empty()) {
+        // Check timeout
         if (deadline_ && std::chrono::steady_clock::now() >= *deadline_) {
+            break; // Time's up, stop traversal
+        }
+
+        auto& current_checkpoint = checkpoint_.back();
+
+        // If we've explored all moves at this level, backtrack
+        if (current_checkpoint.progress_index >= current_checkpoint.maximum_index) {
             checkpoint_.pop_back();
-            return;
+            if (!checkpoint_.empty()) {
+                // Undo the move that brought us to this level
+                game.undo_move();
+                // Advance progress at the parent level
+                ++checkpoint_.back().progress_index;
+            }
+            continue;
+        }
+
+        // Select the next move at current level
+        const std::size_t idx = current_checkpoint.progress_index;
+        game.select_move(idx);
+
+        // Check the new game state after the move
+        const auto new_move_count = game.move_count();
+        const auto new_is_looping = game.is_looping();
+
+        if (new_move_count == 0 || new_is_looping) {
+            // Game is over - emit result
+            ++game_count;
+            const auto winner = game.player() == PieceColor::BLACK ? PieceColor::WHITE : PieceColor::BLACK;
+            ResultEvent const result_event{
+                .game_id = game_count,
+                .looping = new_is_looping,
+                .winner = new_is_looping ? std::nullopt : std::make_optional(winner),
+                .history = game.get_move_sequence(),
+            };
+            if (result_cb_) { result_cb_(result_event); }
+            emit_progress_if_needed();
+
+            // Backtrack immediately - no need to go deeper
+            game.undo_move();
+            ++current_checkpoint.progress_index;
+        } else {
+            // Game continues - go deeper by adding new checkpoint
+            checkpoint_.push_back(CheckpointEntry{0u, static_cast<std::size_t>(new_move_count)});
         }
     }
-
-    // Leaving this decision point - remove the checkpoint entry
-    checkpoint_.pop_back();
-    // Update snapshot if there are still entries, otherwise keep the last known good state
-    if (!checkpoint_.empty()) { last_checkpoint_snapshot_ = checkpoint_; }
 }
 
 void Traversal::traverse_for(Game& game, std::optional<std::chrono::milliseconds> timeout) {
@@ -98,13 +116,9 @@ void Traversal::traverse_for(Game& game, std::optional<std::chrono::milliseconds
 
     traverse_impl(game);
 
-    // If traversal finished and we didn't leave a checkpoint on the stack,
-    // but we captured a last non-empty snapshot earlier, restore it so
-    // external callers can inspect a meaningful final checkpoint.
-    if (checkpoint_.empty() && !last_checkpoint_snapshot_.empty()) { checkpoint_ = last_checkpoint_snapshot_; }
-    // If we still have no checkpoint, provide a placeholder so callers see
-    // a deterministic final state instead of an empty vector.
-    if (checkpoint_.empty() && last_checkpoint_snapshot_.empty()) { checkpoint_.push_back(CheckpointEntry{0u, 0u}); }
+    // If we finished with an empty checkpoint (complete traversal),
+    // provide a placeholder so callers see a deterministic final state.
+    if (checkpoint_.empty()) { checkpoint_.push_back(CheckpointEntry{0u, 0u}); }
 
     // traversal end
 }
