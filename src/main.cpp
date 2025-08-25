@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <string>
@@ -86,11 +87,13 @@ auto main(int argc, const char* const* argv) -> int {
     if (save_checkpoint_to_file(checkpoint, cp_file)) {
         const std::string completed_percentage = calculate_completion_percentage(checkpoint);
 
-        // Convert to double and format with 6 decimal places
-        const double percentage_value = std::stod(completed_percentage);
+        // Append completion information to checkpoint file with full precision
+        std::ofstream ofs(cp_file, std::ios::app);
+        if (ofs) {
+            ofs << std::format("# Depth: {}\n", checkpoint.size());
+            ofs << std::format("# Completion (range 0.0 - 1.0): {}\n", completed_percentage);
+        }
 
-        std::cout << std::format("Depth {}\n", checkpoint.size());
-        std::cout << std::format("Completion (range 0.0 - 1.0): {:.36f}\n", percentage_value);
         std::cout << std::format("Checkpoint saved to '{}'\n", cp_file);
     }
 
