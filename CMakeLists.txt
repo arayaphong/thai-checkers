@@ -20,6 +20,14 @@ option(ENABLE_LTO "Enable Link Time Optimization (IPO) in Release" OFF)
 # Optional: Enable OpenMP if available
 find_package(OpenMP QUIET)
 
+# Find Boost libraries
+find_package(Boost REQUIRED)
+if(Boost_FOUND)
+    message(STATUS "Boost found: ${Boost_VERSION}")
+else()
+    message(FATAL_ERROR "Boost not found! Please install libboost-all-dev or equivalent")
+endif()
+
 # Set build type if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
@@ -60,6 +68,7 @@ add_library(thai_checkers_lib STATIC
     src/Legals.cpp
     src/Game.cpp
     src/Traversal.cpp
+    src/utils.cpp
     # Add other source files here
 )
 
@@ -70,6 +79,10 @@ add_executable(thai_checkers_main
 
 # Link the main executable with the library
 target_link_libraries(thai_checkers_main PRIVATE thai_checkers_lib)
+
+# Link Boost libraries
+target_link_libraries(thai_checkers_main PRIVATE Boost::headers)
+target_link_libraries(thai_checkers_lib PRIVATE Boost::headers)
 
 if(OpenMP_CXX_FOUND)
     target_link_libraries(thai_checkers_main PRIVATE OpenMP::OpenMP_CXX)
@@ -134,7 +147,7 @@ if(BUILD_TESTING)
                 Catch2::Catch2WithMain
         )
         catch_discover_tests(explorer_tests)
-        
+
         # Game tests
         add_executable(game_tests
             src/tests/GameTest.cpp)

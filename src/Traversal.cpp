@@ -57,19 +57,19 @@ void Traversal::traverse_impl(Game& game) { // Iterative traversal using explici
         auto& current_checkpoint = checkpoint_.back();
 
         // If we've explored all moves at this level, backtrack
-        if (current_checkpoint.progress_index >= current_checkpoint.maximum_index) {
+        if (current_checkpoint.index >= current_checkpoint.size) {
             checkpoint_.pop_back();
             if (!checkpoint_.empty()) {
                 // Undo the move that brought us to this level
                 game.undo_move();
                 // Advance progress at the parent level
-                ++checkpoint_.back().progress_index;
+                ++checkpoint_.back().index;
             }
             continue;
         }
 
         // Select the next move at current level
-        const std::size_t idx = current_checkpoint.progress_index;
+        const std::size_t idx = current_checkpoint.index;
         game.select_move(idx);
 
         // Check the new game state after the move
@@ -91,7 +91,7 @@ void Traversal::traverse_impl(Game& game) { // Iterative traversal using explici
 
             // Backtrack immediately - no need to go deeper
             game.undo_move();
-            ++current_checkpoint.progress_index;
+            ++current_checkpoint.index;
         } else {
             // Game continues - go deeper by adding new checkpoint
             checkpoint_.push_back(CheckpointEntry{0u, static_cast<std::size_t>(new_move_count)});

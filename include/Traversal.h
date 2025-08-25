@@ -12,8 +12,8 @@ class Traversal {
   public:
     // Checkpoint entry exposed publicly so callers can inspect the traversal state.
     struct CheckpointEntry {
-        std::size_t progress_index;
-        std::size_t maximum_index;
+        std::size_t index; // Current position in the traversal
+        std::size_t size;  // Total number of size available
     };
 
     // Return the current checkpoint stack (depth-ordered, root -> current).

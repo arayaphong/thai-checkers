@@ -1,78 +1,19 @@
 // Minimal runner for simplified Traversal
 #include "Game.h"
 #include "Traversal.h"
-#include <algorithm>
+#include "utils.h"
 #include <chrono>
 #include <cstdint>
-#include <cstdlib>
-#include <exception>
-#include <iostream>
 #include <format>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <string_view>
-#include <optional>
-#include <fstream>
 
 namespace {
 constexpr long long k_milliseconds_per_second = 1000;
 constexpr long long k_default_timeout_ms = 10000;
 } // namespace
-
-auto parse_timeout(std::string_view arg) -> std::optional<std::chrono::milliseconds> {
-    if (arg.empty()) { return std::nullopt; }
-
-    try {
-        // Check for 'ms' suffix (milliseconds) FIRST - before checking 's'
-        if (arg.ends_with("ms")) {
-            const auto ms_str = arg.substr(0, arg.length() - 2);
-            const long long milliseconds = std::stoll(std::string(ms_str));
-            return std::chrono::milliseconds(milliseconds);
-        }
-
-        // Check for 's' suffix (seconds)
-        if (arg.ends_with('s')) {
-            const auto seconds_str = arg.substr(0, arg.length() - 1);
-            const double seconds = std::stod(std::string(seconds_str));
-            return std::chrono::milliseconds(static_cast<long long>(seconds * k_milliseconds_per_second));
-        }
-
-        // Default to seconds if no suffix
-        const double seconds = std::stod(std::string(arg));
-        return std::chrono::milliseconds(static_cast<long long>(seconds * k_milliseconds_per_second));
-    } catch (const std::exception&) { return std::nullopt; }
-}
-
-void print_usage(const char* program_name) {
-    std::cout << std::format("Usage: {} [--timeout DURATION]\n", program_name);
-    std::cout << "Options:\n";
-    std::cout << "  --timeout DURATION  Set timeout duration (e.g., 10s, 12.5s, 5000ms)\n";
-    std::cout << "                      Default: 10s\n";
-    std::cout << "  --help             Show this help message\n";
-}
-
-// Save checkpoint as a compact JSON object to a file. Returns true on success.
-static bool save_checkpoint_json_to_file(const std::vector<Traversal::CheckpointEntry>& cp,
-                                         const std::string& filename) {
-    std::ofstream ofs(filename, std::ios::trunc);
-    if (!ofs) return false;
-
-    ofs << '{';
-    ofs << "\"checkpoint\":";
-    ofs << '[';
-    for (std::size_t i = 0; i < cp.size(); ++i) {
-        const auto& e = cp[i];
-        ofs << '{';
-        ofs << "\"progress\":" << e.progress_index << ',';
-        ofs << "\"maximum\":" << e.maximum_index;
-        ofs << '}';
-        if (i + 1 < cp.size()) ofs << ',';
-    }
-    ofs << ']';
-    ofs << '}';
-    ofs << '\n';
-    return true;
-}
 
 auto main(int argc, const char* const* argv) -> int {
     // Default timeout: 10 seconds
@@ -139,13 +80,18 @@ auto main(int argc, const char* const* argv) -> int {
     traversal.traverse_for(game, timeout);
 
     // Save checkpoint as JSON before exit
-    const std::string cp_file = "checkpoint.json";
+    const std::string cp_file = "checkpoint_" + std::to_string(black + white + loops) + ".log";
     const auto checkpoint = traversal.get_checkpoint();
 
-    if (save_checkpoint_json_to_file(checkpoint, cp_file)) {
-        std::cout << std::format("Checkpoint saved: {} depth to {}\n", checkpoint.size(), cp_file);
-    } else {
-        std::cerr << std::format("Error: failed to save checkpoint to {}\n", cp_file);
+    if (save_checkpoint_to_file(checkpoint, cp_file)) {
+        const std::string completed_percentage = calculate_completion_percentage(checkpoint);
+
+        // Convert to double and format with 6 decimal places
+        const double percentage_value = std::stod(completed_percentage);
+
+        std::cout << std::format("Depth {}\n", checkpoint.size());
+        std::cout << std::format("Completion (range 0.0 - 1.0): {:.36f}\n", percentage_value);
+        std::cout << std::format("Checkpoint saved to '{}'\n", cp_file);
     }
 
     // Print game statistics
