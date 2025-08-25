@@ -20,6 +20,21 @@ ROOT_SYMLINK="thai_checkers_optimized"
 OPT_ARCH="auto"       # auto|native|znver2|znver3|znver4
 OPT_LTO="ON"          # ON|OFF
 OPT_AGGRESSIVE=false  # add extra optimization flags
+OPT_OPENMP="auto"     # auto|on|off - auto detects OpenMP availability
+
+detect_openmp_support() {
+  # Check if OpenMP is available by testing if libgomp is installed
+  # This is simpler and more reliable than CMake testing
+  if ldconfig -p | grep -q "libgomp\|libomp" 2>/dev/null; then
+    echo "available"
+  elif [[ -f /usr/lib/x86_64-linux-gnu/libgomp.so* ]] || [[ -f /usr/lib/libgomp.so* ]]; then
+    echo "available"
+  elif gcc --help=target 2>/dev/null | grep -q "fopenmp"; then
+    echo "available"
+  else
+    echo "not_available"
+  fi
+}
 
 detect_cpu_arch() {
   # Auto-detect CPU architecture for optimal tuning
@@ -71,16 +86,19 @@ Usage:
 Build Options:
   --arch <auto|native|znver2|znver3|znver4>  CPU tuning target (default: auto)
   --lto <on|off>                             Enable Link Time Optimization (default: on)
+  --openmp <auto|on|off>                     Enable OpenMP support (default: auto)
   --aggressive                               Add extra optimization flags
 
 Examples:
-  $0 build                              # build with auto-detected CPU architecture
+  $0 build                              # build with auto-detected CPU architecture and OpenMP
   $0 build --arch native --aggressive   # build with native arch and extra opts
+  $0 build --openmp off                 # build without OpenMP support
   $0 run --timeout 30s                  # run with 30s timeout
   $0 run --help                         # show executable help
 
 Notes:
   - Auto-detection works for AMD Zen architectures (znver1/2/3/4), defaults to 'native' for others
+  - OpenMP auto-detection checks for system OpenMP support and enables it if available
   - A symlink '${ROOT_SYMLINK}' is created for convenience
   - All arguments after 'run' are passed directly to the executable
 EOF
@@ -128,12 +146,34 @@ build_optimized() {
     CMAKE_ARGS+=( -DAMD_ZEN_ARCH="$actual_arch" )
   fi
 
+  # OpenMP selection
+  local openmp_enabled="$OPT_OPENMP"
+  if [[ "$OPT_OPENMP" == "auto" ]]; then
+    local openmp_support=$(detect_openmp_support)
+    if [[ "$openmp_support" == "available" ]]; then
+      openmp_enabled="on"
+      echo -e "${BLUE}Auto-detected OpenMP: enabled${NC}"
+    else
+      openmp_enabled="off"
+      echo -e "${YELLOW}Auto-detected OpenMP: not available, disabled${NC}"
+    fi
+  fi
+
+  # Note: OpenMP is handled by the CMakeLists.txt find_package(OpenMP QUIET)
+  # We don't need to pass additional CMake flags as it's automatically detected
+
   # Compose release flags
   local BASE_RELEASE_FLAGS="-O3 -DNDEBUG -fomit-frame-pointer"
   local EXTRA_FLAGS=""
   if [[ "$OPT_AGGRESSIVE" == true ]]; then
     EXTRA_FLAGS+=" -ffast-math -funroll-loops -finline-functions"
   fi
+
+  # Add OpenMP flags if enabled
+  if [[ "$openmp_enabled" == "on" ]]; then
+    EXTRA_FLAGS+=" -fopenmp"
+  fi
+
   CMAKE_ARGS+=( -DCMAKE_CXX_FLAGS_RELEASE="$BASE_RELEASE_FLAGS $EXTRA_FLAGS" )
   CMAKE_ARGS+=( -DCMAKE_EXE_LINKER_FLAGS="-s" )
 
@@ -153,6 +193,11 @@ build_optimized() {
       echo "- Arch: $actual_arch"
     fi
     echo "- LTO: ${OPT_LTO^^}"
+    if [[ "$OPT_OPENMP" == "auto" ]]; then
+      echo "- OpenMP: $openmp_enabled (auto-detected)"
+    else
+      echo "- OpenMP: $openmp_enabled"
+    fi
     if [[ "$OPT_AGGRESSIVE" == true ]]; then
       echo "- Extras: -ffast-math -funroll-loops -finline-functions"
     else
@@ -190,6 +235,18 @@ run_optimized() {
 
   echo -e "${GREEN}Running Thai Checkers 2 (Optimized)...${NC}"
   echo "========================================"
+
+  # Display OpenMP thread information if OpenMP is available
+  if command -v nproc >/dev/null 2>&1; then
+    local system_cores=$(nproc --all 2>/dev/null || nproc)
+    echo -e "${BLUE}System cores: ${system_cores}${NC}"
+    if [[ -n "${OMP_NUM_THREADS}" ]]; then
+      echo -e "${BLUE}OpenMP threads: ${OMP_NUM_THREADS} (explicitly set)${NC}"
+    else
+      echo -e "${BLUE}OpenMP threads: ${system_cores} (system default)${NC}"
+    fi
+    echo "========================================"
+  fi
 
   if command -v stdbuf >/dev/null 2>&1; then
     stdbuf -oL -eL "./$ROOT_SYMLINK" "${ARGS[@]}"
@@ -232,6 +289,21 @@ while [[ $# -gt 0 ]]; do
         on|ON) OPT_LTO=ON;;
         off|OFF) OPT_LTO=OFF;;
         *) echo -e "${RED}Invalid --lto value: ${1#*=} (use on|off)${NC}"; exit 1;;
+      esac
+      shift ;;
+    --openmp)
+      case "${2^^}" in
+        AUTO|ON|OFF) OPT_OPENMP="${2,,}";;
+        auto|on|off) OPT_OPENMP="$2";;
+        *) echo -e "${RED}Invalid --openmp value: $2 (use auto|on|off)${NC}"; exit 1;;
+      esac
+      shift 2 ;;
+    --openmp=*)
+      case "${1#*=}" in
+        auto|AUTO) OPT_OPENMP=auto;;
+        on|ON) OPT_OPENMP=on;;
+        off|OFF) OPT_OPENMP=off;;
+        *) echo -e "${RED}Invalid --openmp value: ${1#*=} (use auto|on|off)${NC}"; exit 1;;
       esac
       shift ;;
     --aggressive)

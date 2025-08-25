@@ -11,6 +11,10 @@
 #include <string>
 #include <utility>
 #include <unordered_map>
+#include <vector>
+#ifdef HAVE_OPENMP
+#include <omp.h>
+#endif
 
 auto piece_symbol(bool is_black, bool is_dame) -> std::string {
     return is_black ? (is_dame ? "□" : "○") : (is_dame ? "■" : "●");
@@ -101,12 +105,28 @@ auto Game::get_moveable_pieces() const -> std::unordered_map<Position, Legals> {
     const auto explorer = Explorer(board_history.back());
     const auto pieces = board_history.back().get_pieces(player());
 
+    // Convert pieces map to vector for parallel processing
+    std::vector<std::pair<Position, PieceInfo>> piece_vector;
+    piece_vector.reserve(pieces.size());
+    for (const auto& piece : pieces) { piece_vector.emplace_back(piece); }
+
     std::unordered_map<Position, Legals> out;
-    out.reserve(pieces.size());
-    for (const auto& [pos, _info] : pieces) {
+
+    // Process pieces in parallel using OpenMP with critical section
+#ifdef HAVE_OPENMP
+#pragma omp parallel for
+#endif
+    for (std::size_t i = 0; i < piece_vector.size(); ++i) {
+        const auto& [pos, _info] = piece_vector[i];
         auto opts = explorer.find_valid_moves(pos);
-        if (!opts.empty()) { out.emplace(pos, std::move(opts)); }
+        if (!opts.empty()) {
+#ifdef HAVE_OPENMP
+#pragma omp critical
+#endif
+            { out.emplace(pos, std::move(opts)); }
+        }
     }
+
     return out;
 }
 

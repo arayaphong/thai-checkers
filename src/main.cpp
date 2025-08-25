@@ -52,6 +52,9 @@ auto main(int argc, const char* const* argv) -> int {
 
     std::cout << std::format("Running Thai Checkers analysis with timeout: {}ms\n", timeout.count());
 
+    // Record start time for runtime calculation
+    const auto start_time = std::chrono::steady_clock::now();
+
     // Game statistics counters
     uint64_t loops = 0;
     uint64_t black = 0;
@@ -80,18 +83,29 @@ auto main(int argc, const char* const* argv) -> int {
     Game game;
     traversal.traverse_for(game, timeout);
 
+    // Calculate actual runtime
+    const auto end_time = std::chrono::steady_clock::now();
+    const auto runtime_duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    const double runtime_seconds =
+        static_cast<double>(runtime_duration.count()) / static_cast<double>(k_milliseconds_per_second);
+
     // Save checkpoint as JSON before exit
     const std::string cp_file = "checkpoint_" + std::to_string(black + white + loops) + ".log";
     const auto checkpoint = traversal.get_checkpoint();
 
     if (save_checkpoint_to_file(checkpoint, cp_file)) {
         const std::string completed_percentage = calculate_completion_percentage(checkpoint);
+        const double throughput =
+            static_cast<double>(black + white + loops) /
+            (static_cast<double>(timeout.count()) / static_cast<double>(k_milliseconds_per_second));
 
         // Append completion information to checkpoint file with full precision
         std::ofstream ofs(cp_file, std::ios::app);
         if (ofs) {
             ofs << std::format("# Depth: {}\n", checkpoint.size());
             ofs << std::format("# Completion (range 0.0 - 1.0): {}\n", completed_percentage);
+            ofs << std::format("# Throughput: {:.3f} games/s\n", throughput);
+            ofs << std::format("# Runtime: {:.3f} seconds\n", runtime_seconds);
         }
 
         std::cout << std::format("Checkpoint saved to '{}'\n", cp_file);
